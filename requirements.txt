@@ -1,0 +1,12 @@
+# LGF-Agent 运行依赖 (与 pyproject.toml 保持一致)
+numpy>=1.23
+scipy>=1.9
+sympy>=1.11
+torch>=2.0
+
+# --- 开发 / 测试 ---
+pytest>=7.0
+
+# --- 可选: 对照基线 (PySR) ---
+# pysr>=0.16
+# pandas>=1.5

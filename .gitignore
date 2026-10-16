@@ -1,0 +1,36 @@
+# --- 构建产物 / 缓存 ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+
+# --- 运行产物 (示例与跑批输出, 不入库) ---
+outputs/
+runs_*/
+_tmp_*/
+*.log
+*.jsonl
+!examples/**/data/*.npz
+
+# --- 编辑器 / 系统 ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- 敏感信息 ---
+.env
+*.key
+secrets.*

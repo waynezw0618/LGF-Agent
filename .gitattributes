@@ -1,0 +1,13 @@
+# 统一换行符, 避免跨平台 (Windows/Linux) diff 噪声
+* text=auto eol=lf
+
+# 二进制资源
+*.npz binary
+*.npy binary
+*.png binary
+*.jpg binary
+*.pdf binary
+
+# 生成物不参与语言统计
+outputs/** linguist-generated
+docs/*.md linguist-documentation

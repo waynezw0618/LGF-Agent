@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lgf-agent"
+version = "0.1.0"
+description = "LGF-Agent: LLM 驱动的符号回归智能体框架 (五层架构 + 生成/审查分离)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "LGF-Agent contributors" }]
+keywords = [
+    "symbolic-regression", "equation-discovery", "llm-agent",
+    "constitutive-modeling", "turbulence", "algebraic-stress-model",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.9",
+    "sympy>=1.11",
+    "torch>=2.0",          # 仅 priors 的代理场 (SurrogateField) 需要
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+# PySR 仅用于对照基线 (可选); 不装不影响 LGF-Agent 本体
+baselines = ["pysr>=0.16", "pandas>=1.5"]
+# LLM 后端通过 OpenAI 兼容 HTTP 接口调用, 只需标准库 urllib, 无额外依赖
+
+[project.urls]
+Documentation = "docs/ARCHITECTURE.md"
+
+[tool.setuptools]
+packages = [
+    "lgf_agent",
+    "lgf_agent.core",
+    "lgf_agent.agent",
+    "lgf_agent.verify",
+    "lgf_agent.domains",
+    "lgf_agent.domains.asm",
+]
+
+[tool.setuptools.package-data]
+"lgf_agent.domains.asm" = ["skills/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
