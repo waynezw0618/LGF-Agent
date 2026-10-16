@@ -8,7 +8,8 @@
     L4 角色层   Creator(A) | Inspector(B) | Archivist(可选)   → agent/roles.py
     L3 轨迹层   R-C-L-K 调度 + provenance + 恢复 + 预算会计    → agent/scheduler.py
     L2 状态层   候选-证据契约 + append-only archive + 投影      → store.py / projector.py
-    L1 动作层   统一工具接口 (12 个可复用科学动作)              → tools.py
+                (+ 分析层: 通道归因 / 变量集画像)               → analysis.py
+    L1 动作层   统一工具接口 (13 个可复用科学动作)              → tools.py
     L0 领域层   域适配器 (asm / ...)                            → domains/
 
 设计原则
@@ -40,6 +41,9 @@ from .version import __version__, __agent_protocol__
 from .core.config import LGFConfig
 from .store import Candidate, Archive
 from .projector import project, PROJECTORS
+from . import analysis
+from .analysis import (channel_of_var, channel_groups, tensor_channels_used,
+                       leave_one_channel_out, summarize_channel_usage)
 from .tools import ToolRegistry, ToolResult, default_tools
 from .verify import Constraint, ProbeResult, VerifyContext, Verifier
 from .verify import default_hard_rules as hard_rules
@@ -49,6 +53,8 @@ __all__ = [
     "LGFConfig",
     "Candidate", "Archive",
     "project", "PROJECTORS",
+    "analysis", "channel_of_var", "channel_groups", "tensor_channels_used",
+    "leave_one_channel_out", "summarize_channel_usage",
     "ToolRegistry", "ToolResult", "default_tools",
     "Constraint", "ProbeResult", "VerifyContext", "Verifier", "hard_rules",
     "run_agent",

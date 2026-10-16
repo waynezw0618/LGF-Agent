@@ -18,7 +18,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from _common import resolve_dataset                            # noqa: E402
+from _common import resolve_dataset, default_out             # noqa: E402
 from lgf_agent import LGFConfig                                # noqa: E402
 from lgf_agent.agent.scheduler import run_agent                # noqa: E402
 from lgf_agent.domains.asm import ASMDomain                    # noqa: E402
@@ -29,7 +29,7 @@ def main() -> None:
     ap.add_argument("--dataset", default=None,
                     help="缺省: 打包的 64 点/工况精简样例")
     ap.add_argument("--variant", default="g", choices=["v", "g", "e"])
-    ap.add_argument("--out", default=os.path.join(REPO, "outputs", "agent_demo"))
+    ap.add_argument("--out", default=default_out("agent_demo"))
     ap.add_argument("--budget", type=float, default=180.0)
     ap.add_argument("--R", type=int, default=1)
     ap.add_argument("--C", type=int, default=2)

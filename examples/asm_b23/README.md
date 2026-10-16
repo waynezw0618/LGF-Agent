@@ -36,21 +36,31 @@ python examples/asm_b23/run_offline_demo.py
 #    常用开关：--C 2 --K 2 --projector single_best --no-inspector
 #    这些正是 P4 消融臂；--no-inspector 是"单 agent"对照。
 
-# 2) P0 判决点：回灌历史产物 + 机器判定奇偶性断言
+# 2) P0 判决点：回灌历史产物 + 机器判定奇偶性断言 + 通道归因
 python examples/asm_b23/run_p0_verify.py --legacy <上层工程>/outputs/asm
 ```
 
-`run_p0_verify.py` 做三件事（对应升级方案 §4 的 P0 验收）：
+`run_p0_verify.py` 做四件事（对应升级方案 §4 的 P0 验收）：
 
 1. **C1 奇偶性机器判定** —— 对 `T1_23 / T5_23 / T6_23 / T10_23 / b23` 计算 even score
    （应 ≈ +1.00），并用一个已知奇函数作对照（应 ≈ −1）证明探针有区分力；
    同时自动标记历史 physics context 里的错误断言。
 2. **archive 回灌** —— 把 `outputs/asm/runs_*/**/*_final.json` 与 `summary_*.json`
-   全量灌进 append-only archive（本次实测 272 文件 → 2278 候选）。
-3. **投影** —— 按**变量集分组**算 Pareto 前沿，直接复现历史排序，
-   取代以前的一次性脚本（`_tmp_t23_contrib.py` 之类）。
+   全量灌进 append-only archive（本次实测 274 文件 → 2386 候选）。
+3. **投影** —— 按**变量集分组**算 Pareto 前沿，直接复现历史排序。
+4. **通道归因** —— 直接回答"最优公式到底有没有用张量基通道"：
+   - **结构查询**（零依赖）：2386 条里公式口径 80 条真用了通道、2306 条纯标量；
+     在"变量池含 10 个通道"的 18 维 m 池分组（162 条）中，**按 loss 排序的前 8 名
+     全部是零通道式**（纯 `roloc`/`yw`）—— 历史结论被机器复现。
+   - **数值分解**（`analysis.leave_one_channel_out`）：把某通道输入置零后重算，
+     得到 `rms_share`（净贡献 RMS 占比）与 `delta_loss`（去掉后的代价）。
+     用一个已知真值的合成算例（`y = 2√roloc + 0.5·T1`）校准，与解析值一致到 < 1e-6。
+   - 这一步正式取代了以前的一次性脚本 `_tmp_t23_contrib.py`。
 
 > 判据：若第 1 步不能自动跑出来，说明约束层设计有问题 —— 不要进入 P1。
+
+> 示例产物默认落在仓库根的 `run/`（可用 `LGF_AGENT_OUTDIR` 覆盖），
+> 不再写进包内 `outputs/`，以免与上层工程的真实跑批产物混淆。
 
 ## 接真实 LLM
 

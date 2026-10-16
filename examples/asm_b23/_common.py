@@ -32,3 +32,15 @@ def resolve_dataset(explicit: Optional[str] = None, variant: str = "g") -> str:
     raise FileNotFoundError(
         "找不到数据集。请用 --dataset 指定 dataset_trueasm_<variant>.npz。\n已尝试:\n  "
         + "\n  ".join(cands))
+
+
+def default_out(name: str) -> str:
+    """示例脚本的默认产物目录 (可用 LGF_AGENT_OUTDIR 覆盖)。
+
+    刻意不用包内 ``outputs/``: 那个名字容易与上层工程 ``outputs/asm`` (真实跑批
+    产物) 混淆, 且部分环境对其有额外保护。示例产物一律落在仓库根的 ``run/``。
+    """
+    root = os.environ.get("LGF_AGENT_OUTDIR")
+    if not root:
+        root = os.path.join(REPO, "run")
+    return os.path.join(root, name)

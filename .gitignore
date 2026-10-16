@@ -17,6 +17,7 @@ env/
 
 # --- 运行产物 (示例与跑批输出, 不入库) ---
 outputs/
+run/
 runs_*/
 _tmp_*/
 *.log

@@ -2,6 +2,43 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] — 2026-10-16
+
+补齐 **P0 判决点第 2 条**: 通道归因。历史上"最优公式到底有没有用张量基通道"这个问题
+只能靠一次性脚本 `_tmp_t23_contrib.py` 回答 (里面硬编码公式、手工按 `Nv` 切分数组),
+现在变成 L2 上的一次只读查询 + 一个 L1 动作。
+
+### 新增 — L2 分析层 (`lgf_agent/analysis.py`)
+- `channel_of_var(name)`：统一识别本工程出现过的三套通道命名
+  (`T1` / `T1_23` / `T1s` → `T1`；`T5s_v` / `T5_v` → `T5(v)`)，非通道变量返回 `None`。
+- `channel_groups` / `tensor_channels_used` / `vars_used_in_graph`：区分
+  **变量池提供** 与 **公式实际引用** —— 这两件事历史上被混为一谈。
+- `leave_one_channel_out(graph, theta, cases, var_names)`：把某通道的输入整体置零后重算，
+  得到 `contribution_c = f(x) − f(x | vars_c:=0)`、`rms_share_c`、`delta_loss_c`
+  —— 对任意图结构成立，不要求线性求和，也不需要预先知道项的分组。
+- `candidate_channel_usage` / `summarize_channel_usage`：单条 / 一批候选的通道画像
+  （公式口径 + 池口径 + 解析失败计数，三栏分开报）。
+
+### 新增 — `Archive.channel_usage()` (`store.py`)
+archive 级只读查询，直接回答"这批候选里有多少条真用了张量通道、各自用了哪些"。
+
+### 新增 — L1 动作 `channel_attr` (`tools.py`)
+第 13 个科学动作。变量池无通道时走结构分支直接回答（零成本）；否则做数值分解并
+把 `channels_in_formula` / `pool_channels` 分开报告。
+
+### 变更 — P0 示例脚本 (`examples/asm_b23/run_p0_verify.py`)
+- 新增 **步骤 4**：4a 结构查询（回灌 2386 条 → 公式口径 80 条用到通道、2306 条纯标量；
+  含通道的 18 维 m 池分组里，**按 loss 排序的前 8 名全部是零通道纯 roloc/yw 式**，
+  机器复现历史结论）；4b 分组前排判定；4c 已知真值合成算例校准
+  （`y = 2√roloc + 0.5·T1`，`rms_share` 与解析值一致到 < 1e-6）。
+- 示例产物目录由 `outputs/` 改为 `run/`（可用 `LGF_AGENT_OUTDIR` 覆盖），
+  避免与上层工程的 `outputs/asm`（真实跑批产物）混淆。
+
+### 测试
+- 新增 `tests/test_analysis.py`（8 项）：命名解析覆盖、LOCO 对已知真值的回收、
+  "公式未引用通道"与"变量池无通道"两个分支、archive 结构查询可重放、动作注册。
+- 全量：**48 passed**（0.1.0 时为 40）。
+
 ## [0.1.0] — 2026-10-16
 
 首个可发布骨架。LGF 升级为 LGF-Agent，五层架构 + 生成/审查分离，ASM 作为示例域。

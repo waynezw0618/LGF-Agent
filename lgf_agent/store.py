@@ -218,6 +218,17 @@ class Archive:
     def __iter__(self):
         return iter(self.all())
 
+    # ---------------- 只读查询 ----------------
+    def channel_usage(self) -> Dict[str, Any]:
+        """通道使用画像: 直接回答 "最优公式到底有没有用张量基通道"。
+
+        历史上的 `_tmp_t23_contrib.py` 就是为了回答这个问题写的一次性脚本;
+        状态层落地后, 它变成 archive 上的一次查询 (不需要数据, 只看候选的
+        `var_names`)。实现委托给 `analysis.summarize_channel_usage`。
+        """
+        from . import analysis
+        return analysis.summarize_channel_usage(self.all())
+
     # ---------------- 回灌 ----------------
     @classmethod
     def from_legacy_runs(cls, output_dir: str, *, task: str = "legacy",

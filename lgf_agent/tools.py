@@ -596,6 +596,67 @@ class ReadSkill(Tool):
 
 
 # ===========================================================================
+# 13. channel_attr  —— 通道归因 (替代历史上的 _tmp_t23_contrib.py 一次性脚本)
+# ===========================================================================
+class ChannelAttribution(Tool):
+    name = "channel_attr"
+    description = ("通道归因: 这条公式用到了哪些张量基通道, 各通道净贡献 (RMS 占比) "
+                   "与去掉后的 Δloss。零通道 = 纯标量公式。")
+    args = {"dsl": ("str", True, "LGF-DSL"),
+            "theta": ("list", False, "参数向量 (省略则先拟合)")}
+
+    def __call__(self, dsl: str, theta: Optional[Sequence[float]] = None,
+                 **kw) -> ToolResult:
+        from . import analysis
+        from .core import dsl as _dsl
+        from .core.paramfit import fit_joint
+        t0 = time.time()
+        used = analysis.tensor_channels_used(self.ctx.var_names)
+        if not used:
+            # 结构判定即可回答 —— 本域变量池里根本没有通道变量, 无需数值分解
+            return ToolResult(
+                True, "本域变量池无张量通道变量 → 公式为纯标量式 (零通道)",
+                {"channels_used": [], "scalar_only": True},
+                {"seconds": time.time() - t0},
+                {"channels_used": [], "scalar_only": True})
+        try:
+            g = _dsl.parse_dsl(dsl, self.ctx.var_names)
+        except Exception as e:                              # noqa: BLE001
+            return ToolResult(False, f"DSL 解析失败: {e!r}", {"error": repr(e)},
+                              {"seconds": time.time() - t0})
+        th = np.asarray(theta if theta is not None else [], dtype=float)
+        if th.size == 0:
+            fr = fit_joint(g, self.ctx.cases, n_starts=self.ctx.cfg.gp_starts,
+                           maxiter=self.ctx.cfg.final_maxiter,
+                           time_budget_s=self.ctx.cfg.gp_fit_budget_s,
+                           seed=int(getattr(self.ctx.cfg, "seed", 0)))
+            th = fr.theta
+        # 公式里实际出现的通道 (结构) vs 变量池可提供的通道 (池) —— 两者都要报,
+        # 否则会把 "池里有但公式没用" 误报成 "用了但贡献 0"
+        in_formula = sorted({ch for ch in
+                             (analysis.channel_of_var(v) for v in
+                              analysis.vars_used_in_graph(g, self.ctx.var_names))
+                             if ch})
+        try:
+            rep = analysis.leave_one_channel_out(g, th, self.ctx.cases,
+                                                 self.ctx.var_names)
+        except Exception as e:                              # noqa: BLE001
+            return ToolResult(False, f"通道归因失败: {e!r}", {"error": repr(e)},
+                              {"seconds": time.time() - t0})
+        rep["channels_in_formula"] = in_formula
+        rep["pool_channels"] = used
+        top = rep.get("ranking") or []
+        if not top:
+            obs = f"公式{dsl!r} 未引用任何通道变量 → 零通道 (loss={rep['loss_full']:.4g})"
+        else:
+            obs = "通道净贡献 " + "; ".join(
+                f"{r['channel']}: share={r['rms_share']:.3g} Δloss={r['delta_loss']:+.3g}"
+                for r in top[:4]) + f" (loss_full={rep['loss_full']:.4g})"
+        return ToolResult(True, _clip(obs), {"channel_attr": _jsonable(rep)},
+                          {"seconds": time.time() - t0}, {"channel_attr": rep})
+
+
+# ===========================================================================
 # 12. code_exec (默认关闭)
 # ===========================================================================
 class CodeExec(Tool):
@@ -628,8 +689,8 @@ def default_tools(ctx: ToolContext, *, include_code_exec: bool = False
                   ) -> "ToolRegistry":
     reg = ToolRegistry(ctx)
     for T in (ProfileData, PriorCheck, FitConstants, EvaluateDsl, Attribute,
-              ResidualView, GuardrailCheck, SymbolEquiv, GpSearch, SubmitFormula,
-              ReadSkill):
+              ResidualView, ChannelAttribution, GuardrailCheck, SymbolEquiv,
+              GpSearch, SubmitFormula, ReadSkill):
         reg.register(T(ctx))
     if include_code_exec:
         reg.register(CodeExec(ctx))

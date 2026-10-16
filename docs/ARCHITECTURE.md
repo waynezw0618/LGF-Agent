@@ -80,6 +80,33 @@ class ToolResult:
 - `topk` / `single_best`：次要信号 / 文献消融对照臂；
 - `shuffle` 只打乱顺序不改入选集合（缓解位置偏好）。
 
+**分析层 — `lgf_agent/analysis.py`**（只读查询，不写 archive）
+
+状态层存在的第二个理由：让"事后一次性脚本"消失。历史脚本 `_tmp_t23_contrib.py`
+为回答"最优公式有没有用张量基通道"而硬编码公式项、手工按 `Nv` 切分数组。现在：
+
+| 函数 | 回答什么 | 是否需要数据 |
+|---|---|---|
+| `channel_of_var` | `T1_23` / `T5s_v` / `T10s_e` → 统一通道标签 | 否 |
+| `tensor_channels_used` | 变量**池**里有哪些通道 | 否 |
+| `vars_used_in_graph` | 公式**实际引用**了哪些变量 | 否 |
+| `candidate_channel_usage` | 池口径 / 公式口径 / 解析是否成功，三栏分开 | 否 |
+| `Archive.channel_usage()` | 一批候选的通道使用画像 | 否 |
+| `leave_one_channel_out` | 单通道净贡献 RMS 占比 + 去掉后的 Δloss | 是 |
+
+`leave_one_channel_out` 的定义：
+
+```
+contribution_c(x) = f(x) − f(x | vars_c := 0)
+rms_share_c       = ‖contribution_c‖ / ‖f‖        （跨工况 pooled）
+delta_loss_c      = loss(去掉 c) − loss(全式)      （loss = 逐工况 NMSE 再平均）
+```
+
+对任意图结构成立 —— 不要求线性求和，也不要求预先知道项的分组。通道"出现但无效"
+（系数被拟合成 0）时 `rms_share` 自然趋近 0，这正是历史结论（T1s 净贡献仅 ~6%）
+的机器化形式。**分类以"公式实际引用"为准**：池里有 T 通道而公式写成
+`C1*sqrt(roloc)` 时该通道贡献按定义为 0，报出来只会制造噪声。
+
 ### L3 轨迹层 — `lgf_agent/agent/scheduler.py`
 
 R-C-L-K 的四元组语义：
@@ -146,8 +173,8 @@ class MyDomain(DomainAdapter):
 ## 5. 测试与复现
 
 ```bash
-pytest -q                                    # 40 项离线测试
-python examples/asm_b23/run_p0_verify.py     # 回灌 + 奇偶性机器判定
+pytest -q                                                  # 48 项离线测试
+python examples/asm_b23/run_p0_verify.py                   # 回灌 + 奇偶性机器判定 + 通道归因
 ```
 
 `tests/` 的分布：
@@ -158,6 +185,7 @@ python examples/asm_b23/run_p0_verify.py     # 回灌 + 奇偶性机器判定
 | `test_verify.py` | 5 硬规则的正/反例、非数值约束降级、探针异常降级、汇总裁决 |
 | `test_tools_agent.py` | 注册表、软错误、观测有界、成本账本、响应解析鲁棒性、离线端到端、时间预算 |
 | `test_asm_domain.py` | 数据加载、度量口径、任务卡、**C1 奇偶性机器判定**、C1–C9 齐备、诱饵用例 |
+| `test_analysis.py` | 三套通道命名解析、**LOCO 对已知真值的回收（<1e-6）**、公式未引用 vs 池无通道两个分支、archive 结构查询可重放、动作注册 |
 
 ## 6. 已知限制
 
@@ -165,3 +193,6 @@ python examples/asm_b23/run_p0_verify.py     # 回灌 + 奇偶性机器判定
 - `code_exec` 默认关闭且未接真沙箱 —— 打开前需自行加固（限工作目录子路径、禁网、限时）。
 - Inspector 的底座切换已留接口但未在实验中验证收益。
 - 离线（heuristic）通道只能产出"结构种子级"质量的结果，用于 CI 与对照，**不代表**框架上限。
+- 通道归因的**结构判定**对历史产物存在解析失败的情形（记录里的 `var_names` 不全，
+  实测 2386 条中 149 条）：这些条目退回池口径归类，并在 `n_parse_failed` 里如实计数，
+  不会被伪装成"公式没用通道"。
