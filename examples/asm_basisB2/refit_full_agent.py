@@ -35,6 +35,15 @@ from lgf_agent.domains.asm.basisb2 import (                       # noqa: E402
 from lgf_agent.domains.asm.refit import joint_refit, refit_intermediate  # noqa: E402
 
 
+def _clean_dsl(s: str) -> str:
+    """LLM 偶尔在 DSL 前带 'a_j = ' 标签; compile_expr 只吃纯表达式。"""
+    if s and "=" in s and not s.strip().startswith("("):
+        head = s.split("=", 1)[0].strip()
+        if head and head.replace("_", "").isalnum():   # 形如 a1 / a_1 的标签
+            s = s.split("=", 1)[1].strip()
+    return s
+
+
 def _top1(pattern: str):
     """从 run 目录抓 top-1 冠军。返回 (dsl, theta) 或 None。"""
     for p in sorted(glob.glob(pattern, recursive=True)):
@@ -45,7 +54,7 @@ def _top1(pattern: str):
         top = r.get("top") or []
         if top:
             c = top[0]
-            return c["dsl"], c.get("theta")
+            return _clean_dsl(str(c["dsl"])), c.get("theta")
     return None
 
 

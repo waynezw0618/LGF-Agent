@@ -38,9 +38,12 @@ P2（多种子重复）两阶段实验。主要结果：
 （ii）终口径混合替换实验中，agent 自动发现的 $a_2$ 公式（12 参数）
 联合抛光后达 \textbf{0.0726}，显著优于人工大形状轮调参得到的
 $a_2$ 公式在同一框架下的 \textbf{0.1992}（2.7 倍）；
-（iii）全部发现成本约 \textbf{\$0.02--0.03/臂}（glm-5.3，真实服务端
+（iii）\textbf{全 4 通道 agent SR 化后，终口径 0.0169（39 参数）以
+3.4 倍超越人工大形状轮 SOTA（0.0576，55 参数）}——同协议、同预算、
+全程无人工形状干预；
+（iv）全部发现成本约 \textbf{\$0.02--0.03/臂}（glm-5.3，真实服务端
 usage 记账），成本不构成约束，时间是唯一稀缺资源；
-（iv）P2 三种子重复中 agent 对 legacy \textbf{配对 3/3 全胜}
+（v）P2 三种子重复中 agent 对 legacy \textbf{配对 3/3 全胜}
 （median 1.6$\times$），方向跨种子稳定。
 我们同时如实报告阴性细节：Inspector 逐候选审查曾烧穿整臂预算
 （989\,s 仅 1 步），修复后恢复至与无审查臂相差 8\% 以内，但在 600\,s
@@ -259,6 +262,41 @@ legacy & 自动发现 & 2.9336 & 6 & 崩坏 \\
 公式（12 参）+ 3 条 lstsq 通道的混合配置（0.0726）已接近 4 通道全 SR
 全家桶（55 参，0.0576）——提示全通道 SR 化后有望持平或超越 SOTA。
 
+\subsection{全 4 通道 agent SR 化：超越人工 SOTA}\label{sec:fullagent}
+
+承接上段推断，我们把 4 条通道\textbf{全部}交给 agent 自动发现
+（每通道一次独立搜索：600\,s 预算 / seed 0 / glm-5.3，
+$a_1$ 搜索 \texttt{target\_met} 提前达标，$a_3/a_4$ 预算耗尽正常停机；
+$a_2$ 复用 P1 冠军），随后用与历史 SOTA \texttt{e\_lgf\_mg\_big}
+\textbf{完全相同}的终口径协议（固定形状联合 LM，\texttt{max\_nfev}=20000）
+抛光全部常数：
+
+\begin{table}[htbp]\centering\small
+\caption{全 4 通道 agent SR 化终口径 vs 人工 SOTA（同协议联合 LM）}
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+配置 & 终口径 loss$_{vw}$ & worst & 参数数 & 公式来源 \\
+\midrule
+\textbf{agent 全通道} & \textbf{0.0169} & \textbf{0.0238} & \textbf{39} &
+  4 $\times$ 自动发现（总预算 2400\,s，$\approx$\$0.07） \\
+人工 SOTA（\texttt{e\_lgf\_mg\_big}） & 0.0576 & 0.068 & 55 &
+  人工大形状轮调参（多轮，无成本记录） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{结果：0.0169 vs 0.0576 —— agent 全流程配置以更少参数
+（39 vs 55）在同一协议下超越人工 SOTA 达 3.4$\times$。}
+中间口径 5.49 $\to$ 终口径 0.0169 的 325$\times$ 回落再次复现
+``逐通道独立估常数的抵消结构被联合抛光治愈''的机理（报告轮
+84--92\% 结论的又一次独立验证）。四条公式的结构族与通道物理一致
+（$a_1$：$\yw$ 壁面衰减 + $\et/\zt$ 饱和 + $\rol$ 倒数；
+$a_4$：$\tanh(\rol)$ 旋转饱和主导），原文见附录~B。
+
+\paragraph{定位。}这是``agent 全流程替代人工调参''的第一个完整证据链：
+P1（单通道 3$\times$ 于 legacy）$\to$ 同帧替换（$a_2$ 优于人工冠军
+2.7$\times$）$\to$ 全通道（3.4$\times$ 超越人工 SOTA）。
+
 % ==========================================================================
 \section{P2：多种子重复}
 
@@ -324,17 +362,19 @@ P1 的单种子结论\textbf{跨种子方向稳定}。（2）诚实项：3 对�
 
 在 basisB2 口径的受控对照中，LGF-Agent 以 \textbf{2.8--3.0$\times$} 的
 同预算优势超过 legacy 引擎（P2 三种子配对 3/3 复现，median 1.6$\times$），
-且其自动发现的系数公式在终口径联合抛光中
-\textbf{存活并优于人工大形状轮的同通道冠军}（0.0726 vs 0.1992）——
-这是``LLM 智能体 + 数值探针约束 + 状态层''设计有效性的第一个受控证据。
-全部实验成本 $\approx$\$0.5（glm-5.3，P1+P2 共 4 轮三臂），
+其自动发现的系数公式在终口径联合抛光中
+\textbf{存活并优于人工大形状轮的同通道冠军}（0.0726 vs 0.1992）；
+\textbf{全 4 通道 SR 化后以 0.0169（39 参数）在相同协议下超越人工
+SOTA（0.0576，55 参数）3.4 倍}——构成``agent 全流程替代人工调参''的
+完整证据链，是``LLM 智能体 + 数值探针约束 + 状态层''设计有效性的
+第一个受控证据。全部实验成本 $\approx$\$0.6（glm-5.3，P1+P2+全通道），
 框架、协议与轨迹
 （traj / archive / 真实 usage 账本）完整可复现。
 
 \paragraph{后续。}
-P2 多种子聚合 $\to$ 全 4 通道 SR 化 + 终口径联合抛光（对齐 0.0576 协议）
-$\to$ LOSO 外推检验 $\to$ propose 内部耗时剖析与 $k$/步配比调优
-$\to$ P4 Inspector 换底座消融。
+LOSO 外推检验（全通道 0.0169 为 in-sample，历史 48 参数联合解外推
+已证不可行，39 参数结构的泛化能力是下一个判决点）$\to$ propose
+内部耗时剖析与 $k$/步配比调优 $\to$ P4 Inspector 换底座消融。
 
 \appendix
 \section{冠军公式 DSL 原文与终口径参数}
@@ -347,5 +387,16 @@ $\to$ P4 Inspector 换底座消融。
 
 \paragraph{终口径抛光后的参数（H1，agent\_no\_insp）。}
 \verbatiminput{refit_theta_agent_no_insp.txt}
+
+\section{全 4 通道 agent 公式原文（终口径 0.0169）}
+
+四条系数公式（自动发现，未做任何人工形状干预；抛光前 DSL 原文，
+终口径常数为联合 LM 解，见 \texttt{full\_agent\_refit.json}）：
+
+\verbatiminput{full_agent_formulas.txt}
+
+\paragraph{注。}$a_1$ 式中的分母常数 (C3) 等在联合抛光后为全局常数；
+$\Theta$ 列序为 $\{\et,\zt,S^2/\Omega^2,\ret,\rol,\yw\}$，与
+\texttt{BASE\_VARS} 一致。
 
 \end{document}
