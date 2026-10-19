@@ -39,10 +39,13 @@ P2（多种子重复）两阶段实验。主要结果：
 联合抛光后达 \textbf{0.0726}，显著优于人工大形状轮调参得到的
 $a_2$ 公式在同一框架下的 \textbf{0.1992}（2.7 倍）；
 （iii）全部发现成本约 \textbf{\$0.02--0.03/臂}（glm-5.3，真实服务端
-usage 记账），成本不构成约束，时间是唯一稀缺资源。
+usage 记账），成本不构成约束，时间是唯一稀缺资源；
+（iv）P2 三种子重复中 agent 对 legacy \textbf{配对 3/3 全胜}
+（median 1.6$\times$），方向跨种子稳定。
 我们同时如实报告阴性细节：Inspector 逐候选审查曾烧穿整臂预算
-（989\,s 仅 1 步），修复后恢复至与无审查臂相差 8\% 以内；
-单任务单种子结论的一般性以 P2 多种子聚合为准。
+（989\,s 仅 1 步），修复后恢复至与无审查臂相差 8\% 以内，但在 600\,s
+预算档未转化为 loss 优势；配对全胜的符号检验 $p=0.125$，
+强度结论待更多种子。
 \end{abstract}
 
 \tableofcontents
@@ -257,19 +260,52 @@ legacy & 自动发现 & 2.9336 & 6 & 崩坏 \\
 全家桶（55 参，0.0576）——提示全通道 SR 化后有望持平或超越 SOTA。
 
 % ==========================================================================
-\section{P2：多种子重复（进行中）}
+\section{P2：多种子重复}
 
-三臂 $\times$ 3 种子（seed 0,1,2）$\times$ 600\,s 跑批进行中。
-seed 0 已完成，\textbf{复现 P1 模式}：agent\_no\_insp 0.0675
-（\texttt{target\_met} 提前达标）vs legacy 0.1297（$\approx$2$\times$），
-agent\_insp 0.1196 亦优于 legacy。三种子聚合表将在
-\texttt{p1\_arms\_multiseed.json} 完成后填入。
+三臂 $\times$ 3 种子（seed 0,1,2）$\times$ 600\,s 跑批（glm-5.3），
+聚合结果：
+
+\begin{table}[htbp]\centering\small
+\caption{P2 多种子聚合（每臂 3 seeds，同任务/同预算；中间口径 best\_loss）}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+臂 & median & mean & min & max \\
+\midrule
+legacy & 0.1862 & 0.1985 & 0.1297 & 0.2796 \\
+\textbf{agent\_no\_insp} & \textbf{0.1193} & \textbf{0.1187} & \textbf{0.0675} & \textbf{0.1693} \\
+agent\_insp & 0.1593 & 0.1494 & 0.1196 & 0.1693 \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+{\footnotesize 逐种子明细：legacy $= \{0.1297,\,0.2796,\,0.1862\}$；
+agent\_no\_insp $= \{0.0675\,(\text{target\_met}),\,0.1693,\,0.1193\}$；
+agent\_insp $= \{0.1196,\,0.1593,\,0.1693\}$。}
+\end{table}
+
+\paragraph{跨种子结论。}
+（1）\textbf{配对比较 3/3 全胜}：同种子下 agent\_no\_insp 均优于 legacy
+（比值 1.9$\times$ / 1.7$\times$ / 1.6$\times$），median 改善 1.6$\times$、
+mean 改善 1.7$\times$；agent\_insp 对 legacy 同样 3/3 全胜。
+P1 的单种子结论\textbf{跨种子方向稳定}。（2）诚实项：3 对配对全胜的
+符号检验单侧 $p=0.125$，样本量不足以做显著性断言——方向一致但强度
+待更多种子。（3）区间有重叠（legacy min 0.1297 $<$ agent max 0.1693），
+即单次跑批仍存在 legacy 反超的可能性，不应表述为确定性优势。
+（4）\textbf{Inspector 在该预算档未转化为 loss 优势}
+（median 0.1593 vs 0.1193）：600\,s 内审查开销挤占了搜索步数，
+其价值体现在被审候选的数值裁决 provenance 与 min\_fix，
+收益判定留给更大预算档或更廉价审查策略。
+
+\paragraph{预算超调（P2 实测补充）。}legacy 三种子耗时
+735--873\,s（超调 23--45\%），agent 臂 510--762\,s（超调 0--27\%）
+——预算纪律亦是 agent 引擎的优势之一。
 
 % ==========================================================================
 \section{诚实声明与局限}
 
 \begin{enumerate}\itemsep2pt
-  \item P1 主表为\textbf{单任务、单种子}结果；一般性结论以 P2 聚合为准。
+  \item P1 主表为单任务、单种子结果；\textbf{P2 三种子配对 3/3 全胜}
+        （\S 6）已确认方向稳定，但符号检验 $p=0.125$，强度结论待扩充。
   \item 所有 loss 为 \textbf{in-sample}；B0（0.0031）为 48 参数联合上界，
         不可外推（报告轮留一外推已证不可行）；H1 同样未做留出检验。
   \item swap 对照在\textbf{本框架的 stage base}（默认基池）下进行；历史
@@ -287,10 +323,12 @@ agent\_insp 0.1196 亦优于 legacy。三种子聚合表将在
 \section{结论}
 
 在 basisB2 口径的受控对照中，LGF-Agent 以 \textbf{2.8--3.0$\times$} 的
-同预算优势超过 legacy 引擎，且其自动发现的系数公式在终口径联合抛光中
+同预算优势超过 legacy 引擎（P2 三种子配对 3/3 复现，median 1.6$\times$），
+且其自动发现的系数公式在终口径联合抛光中
 \textbf{存活并优于人工大形状轮的同通道冠军}（0.0726 vs 0.1992）——
 这是``LLM 智能体 + 数值探针约束 + 状态层''设计有效性的第一个受控证据。
-全部实验成本 $\approx$\$0.1（glm-5.3），框架、协议与轨迹
+全部实验成本 $\approx$\$0.5（glm-5.3，P1+P2 共 4 轮三臂），
+框架、协议与轨迹
 （traj / archive / 真实 usage 账本）完整可复现。
 
 \paragraph{后续。}
