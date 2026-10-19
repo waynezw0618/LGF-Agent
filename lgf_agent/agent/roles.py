@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -58,6 +59,26 @@ INSPECTOR_SYSTEM = """你是 LGF-Agent 的 Inspector (审查者). 你**不产生
 
 
 # ===========================================================================
+def _price_usd(u: Optional[Dict[str, Any]]) -> float:
+    """按环境变量单价 (¥/1M tokens) 把 usage 折成 USD; 未配置则返回 0。
+
+    LGF_LLM_PRICE_IN / LGF_LLM_PRICE_OUT (如智谱 glm-5.3: 2.0 / 8.0)。
+    """
+    if not isinstance(u, dict):
+        return 0.0
+    try:
+        pin = float(os.environ.get("LGF_LLM_PRICE_IN", "0") or 0)
+        pout = float(os.environ.get("LGF_LLM_PRICE_OUT", "0") or 0)
+    except ValueError:
+        return 0.0
+    if pin <= 0 and pout <= 0:
+        return 0.0
+    pt = float(u.get("prompt_tokens") or 0)
+    ct = float(u.get("completion_tokens") or 0)
+    cny = (pt * pin + ct * pout) / 1e6
+    return cny / 7.2
+
+
 class Creator:
     def __init__(self, ctx, registry, llm, *, audit=None, ledger=None,
                  domain=None, cfg=None):
@@ -116,10 +137,11 @@ class Creator:
         else:
             toks = sum(estimate_tokens(p) for p in [prompt] + list(out))
         dt = time.time() - t0
+        usd = _price_usd(u if isinstance(u, dict) else None)
         if self.ledger:
-            self.ledger.add("creator", tokens=toks, seconds=dt)
+            self.ledger.add("creator", tokens=toks, usd=usd, seconds=dt)
         if self.ctx is not None:
-            self.ctx.charge(tokens=float(toks), seconds=dt)
+            self.ctx.charge(tokens=float(toks), usd=usd, seconds=dt)
         return list(out)
 
     # ---------------- 主入口 ----------------
@@ -337,9 +359,10 @@ class Inspector:
         else:
             toks = estimate_tokens(prompt) + estimate_tokens(text)
         dt = time.time() - t0
+        usd = _price_usd(u if isinstance(u, dict) else None)
         if self.ledger:
-            self.ledger.add("inspector", tokens=toks, seconds=dt)
-        self.ctx.charge(tokens=float(toks), seconds=dt)
+            self.ledger.add("inspector", tokens=toks, usd=usd, seconds=dt)
+        self.ctx.charge(tokens=float(toks), usd=usd, seconds=dt)
         return parse_agent_response(text, tool_names=())
 
 

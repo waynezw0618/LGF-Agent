@@ -75,8 +75,11 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--backend", default="heuristic",
                     choices=["heuristic", "openai"])
+    ap.add_argument("--arms", default="legacy,agent_no_insp,agent_insp",
+                    help="逗号分隔, 子集重跑 (如只重跑 inspector 臂: --arms agent_insp)")
     ap.add_argument("--out", default=default_out("basisb2_p1_arms"))
     a = ap.parse_args()
+    arm_sel = [s.strip() for s in a.arms.split(",") if s.strip()]
 
     have_key = load_env_file(os.path.join(REPO, ".env")) or \
         bool(os.environ.get("LGF_LLM_API_KEY"))
@@ -110,25 +113,35 @@ def main() -> None:
 
     arms = {}
 
+    selected = []
+    if "legacy" in arm_sel:
+        selected.append("legacy")
+    if "agent_no_insp" in arm_sel:
+        selected.append("agent_no_insp")
+    if "agent_insp" in arm_sel:
+        selected.append("agent_insp")
+
     # ---- 臂 1: legacy ----
     from lgf_agent.core.pipeline_lgf import run_lgf
-    cfg = make_cfg()
-    t0 = time.time()
-    print(f"\n[arm 1/3] legacy ...")
-    out = run_lgf([dict(c) for c in scases], list(vn), cfg,
-                  os.path.join(a.out, "legacy"), client, name="legacy")
-    arms["legacy"] = dict(best_loss=_best_loss_from_arm(out),
-                          elapsed_s=round(time.time() - t0, 2),
-                          n_final=len(out.get("top_final") or []),
-                          dir=os.path.join(a.out, "legacy"))
+    if "legacy" in selected:
+        cfg = make_cfg()
+        t0 = time.time()
+        print(f"\n[arm legacy] ...")
+        out = run_lgf([dict(c) for c in scases], list(vn), cfg,
+                      os.path.join(a.out, "legacy"), client, name="legacy")
+        arms["legacy"] = dict(best_loss=_best_loss_from_arm(out),
+                              elapsed_s=round(time.time() - t0, 2),
+                              n_final=len(out.get("top_final") or []),
+                              dir=os.path.join(a.out, "legacy"))
 
     # ---- 臂 2/3: agent ±Inspector ----
     from lgf_agent.agent.scheduler import run_agent
-    for i, (name, inspector) in enumerate([("agent_no_insp", False),
-                                           ("agent_insp", True)], 2):
+    for name, inspector in [("agent_no_insp", False), ("agent_insp", True)]:
+        if name not in selected:
+            continue
         cfg = make_cfg(agent_mode=True, agent_inspector=inspector,
                        agent_L=a.L)
-        print(f"\n[arm {i}/3] {name} (L={a.L}) ...")
+        print(f"\n[arm {name}] (L={a.L}) ...")
         out = run_agent(dom, cfg, llm_client=client,
                         inspector_client=insp_client if inspector else None,
                         out_dir=os.path.join(a.out, name), task_name=name)
@@ -136,6 +149,7 @@ def main() -> None:
                           elapsed_s=out.get("elapsed_s"),
                           n_candidates=out.get("n_candidates"),
                           admit_ratio=out.get("admit_ratio"),
+                          n_deferred=out.get("n_deferred"),
                           stop_reason=out.get("stop_reason"),
                           cost=out.get("cost"),
                           dir=os.path.join(a.out, name))

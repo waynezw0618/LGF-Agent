@@ -124,6 +124,7 @@ def run_agent(domain, cfg, *, llm_client=None, inspector_client=None,
     step_log: List[Dict[str, Any]] = []
     stop_reason = "completed"
     n_admitted = n_rejected = n_reviewed = 0
+    n_deferred = 0
     best_submitted: Optional[Candidate] = None
 
     for r in range(R):
@@ -141,7 +142,25 @@ def run_agent(domain, cfg, *, llm_client=None, inspector_client=None,
                     break
                 out = creator.propose(pool=pool, step=ell, branch=c,
                                       branch_prior=prior, k=K, skills=skills)
-                for cand in out["candidates"]:
+                # 审查预算控制: 按 loss 升序只逐个审前 N 个, 其余延后入池
+                # (不带 Inspector 裁决直接归档, 由后续 Pareto 投影按 loss 排序)。
+                # 逐个审查之间检查步进截止, 超时立即转入延后 —— 防止单步
+                # 吞掉整臂预算 (2026-10-19 agent_insp 臂 989s 只走 1 步的教训)。
+                new_cands = list(out["candidates"])
+                if inspector is not None:
+                    cap = int(getattr(cfg, "agent_max_reviews_per_step", 6) or 0)
+                    ranked = sorted(
+                        new_cands,
+                        key=lambda cd: (cd.loss is None,
+                                        cd.loss if cd.loss is not None else 0.0))
+                    to_review = ranked[:cap] if cap > 0 else ranked
+                    deferred = [cd for cd in new_cands if cd not in to_review]
+                else:
+                    to_review, deferred = new_cands, []
+                for cand in to_review:
+                    if inspector is not None and time.time() > deadline:
+                        deferred.append(cand)
+                        continue
                     if inspector is not None:
                         rev = inspector.review(cand)
                         n_reviewed += 1
@@ -158,6 +177,13 @@ def run_agent(domain, cfg, *, llm_client=None, inspector_client=None,
                     else:
                         n_admitted += 1 if cand.status != "rejected" else 0
                     archive.update(cand)
+                for cand in deferred:
+                    cand.provenance["inspector"] = {
+                        "verdict": "deferred", "source": "budget",
+                        "violations": [], "min_fix": [],
+                        "unverified": ["inspector 审查因预算延后, 候选未获数值裁决"]}
+                    archive.update(cand)
+                n_deferred += len(deferred)
                 # 刷新 pool (本步新增候选)
                 pool = project(archive.all(), view=view, max_n=max_ctx,
                                shuffle=False) if len(archive) else pool
@@ -202,6 +228,7 @@ def run_agent(domain, cfg, *, llm_client=None, inspector_client=None,
         "n_reviewed": n_reviewed,
         "n_admitted": n_admitted,
         "n_rejected": n_rejected,
+        "n_deferred": n_deferred,
         # 对标文献口径: 入池候选通过全部约束的比率
         "admit_ratio": (n_admitted / n_reviewed) if n_reviewed else None,
         "stop_reason": stop_reason,

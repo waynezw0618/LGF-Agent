@@ -23,7 +23,19 @@
   组合外推表（对照三元预算上限）；429 限流时给出可操作提示并干净退出；
 - `run_p1_arms.py`：三臂同预算对照协议（legacy vs agent−Inspector vs
   agent+Inspector），同任务/同种子/同 `time_budget_s`，两引擎都尊重预算到点
-  即停；heuristic 冒烟已跑通（legacy 0.744 / agent 1.04，stop_reason 正常落盘）。
+  即停；支持 `--arms` 子集重跑。
+
+### 实测 — P1 run 1 + 修复（glm-5.3, 600s/臂, 2026-10-19）
+- 实测单题成本：propose ≈2k tok/8–35s，**review ≈5.9k tok/20–100s
+  （reasoning 3.9–4.4k，时间大头）**；R1C1L30K1 一臂 ≈0.19M tok ≈$0.03。
+- 三臂结果：**agent_no_insp 0.0995（target_met 提前达标）vs legacy 0.2997
+  （2.8–3.0×）**；agent_insp 首跑病态（62 候选逐个审烧光预算，989s 走 1 步）。
+- **修复**：新配置 `agent_max_reviews_per_step=6`（按 loss 升序只审前 N，
+  其余延后入池并标 `deferred/budget` provenance）+ 审查循环步内截止检查
+  → 复跑 0.6151 → **0.1076**，超调 65%→4%。
+- CostLedger 接入单价（`LGF_LLM_PRICE_IN/OUT`，¥/M → USD），usd 记账真实化。
+- 判决文档：`run/basisb2_p1_arms/P1_verdict.md`（含诚实声明：单任务单种子，
+  不支撑一般性结论；多种子属 P2）。
 
 ### 修复
 - `Creator.build_prompt` 调用了不存在的 `render_view(..., shuffle=...)` 形参 ——

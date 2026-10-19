@@ -65,6 +65,7 @@ _FIELD_KIND: dict = {
     "agent_inspector_api_key": "optional_str",
     "agent_token_budget": "int", "agent_cost_budget_usd": "float",
     "agent_max_ctx_candidates": "int", "agent_skills": "list_str",
+    "agent_max_reviews_per_step": "int",
     "agent_shuffle_candidates": "bool", "agent_code_exec": "bool",
 }
 
@@ -205,6 +206,11 @@ class LGFConfig:
     agent_cost_budget_usd: float = 5.0
     # 每次注入 prompt 的候选数上限 (Pareto 投影有界化)
     agent_max_ctx_candidates: int = 8
+    # 每步最多逐个 LLM 审查的候选数 (超出部分按 loss 排序延后入池)。
+    # 背景: 实测 Inspector 单次 review ≈ 5.9k tok / 20-100s (reasoning 占大头),
+    # 一次 propose 吐 62 候选时逐个审会把整臂预算烧光 (agent_insp 臂 989s 只走
+    # 1 步的教训, 2026-10-19)。0 = 不设限 (旧行为)。
+    agent_max_reviews_per_step: int = 6
     # 加载的领域技能卡 (read_skill 的来源; 空 → 域适配器默认卡)
     agent_skills: List[str] = field(default_factory=list)
     # 候选呈现顺序随机化 (缓解 LLM 位置偏好)
