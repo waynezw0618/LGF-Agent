@@ -150,3 +150,72 @@ def test_run_agent_respects_time_budget(synthetic_cases, tmp_path):
                     agent_L=50)
     res = run_agent(dom, cfg, out_dir=str(tmp_path), task_name="budget")
     assert res["stop_reason"] in ("time_budget", "loop_exhausted")
+
+
+# ===========================================================================
+# usage 真实记账 (P1 前置): last_usage 协议 → CostLedger 优先吃服务端值
+# ===========================================================================
+class _UsageFakeLLM:
+    """模拟回传服务端 usage 的客户端 (OpenAICompatLLM 行为的最小替身)。"""
+
+    def __init__(self, usage=None):
+        self.last_usage = usage or {"prompt_tokens": 100,
+                                    "completion_tokens": 50,
+                                    "total_tokens": 150,
+                                    "estimated": False}
+        self.calls = 0
+
+    def complete(self, prompt, *, n=1, params=None):
+        self.calls += 1
+        return ["{\"thought\":\"t\",\"actions\":[],\"candidates\":[]}"]
+
+    def is_heuristic(self):
+        return False
+
+
+class _NoUsageLLM(_UsageFakeLLM):
+    """不报告 usage 的客户端 → 应回退字符估算 (estimated 语义)。"""
+
+    def complete(self, prompt, *, n=1, params=None):
+        self.calls += 1
+        return ["ok"]
+
+    @property
+    def usage(self):                     # 显式返回 None (覆盖 BaseLLM 协议)
+        return None
+
+
+def test_creator_ledger_prefers_server_usage(synthetic_cases):
+    """Creator 记账: 服务端 usage=150 → ledger 恰好 +150 (不是字符估算)。"""
+    from lgf_agent import LGFConfig
+    from lgf_agent.agent.runtime import CostLedger
+    from lgf_agent.agent.roles import Creator
+    from lgf_agent.tools import ToolContext, default_tools
+
+    cases, vn = synthetic_cases
+    cfg = LGFConfig()
+    ctx = ToolContext(cases=cases, var_names=vn, cfg=cfg)
+    reg = default_tools(ctx)
+    ledger = CostLedger()
+    llm = _UsageFakeLLM()
+    cr = Creator(ctx, reg, llm, ledger=ledger)
+    cr.propose(pool=[], step=0, branch=0)
+    assert llm.calls >= 1
+    assert ledger.tokens == 150 * llm.calls          # 精确等于服务端值
+    assert ledger.seconds > 0
+
+
+def test_usage_estimated_fallback(synthetic_cases):
+    """无 usage 客户端 → 回退 estimate_tokens (≥1), 不抛错。"""
+    from lgf_agent import LGFConfig
+    from lgf_agent.agent.runtime import CostLedger, estimate_tokens
+    from lgf_agent.agent.roles import Creator
+    from lgf_agent.tools import ToolContext, default_tools
+
+    cases, vn = synthetic_cases
+    ctx = ToolContext(cases=cases, var_names=vn, cfg=LGFConfig())
+    reg = default_tools(ctx)
+    ledger = CostLedger()
+    llm = _NoUsageLLM()
+    Creator(ctx, reg, llm, ledger=ledger).propose(pool=[], step=0, branch=0)
+    assert ledger.tokens >= estimate_tokens("ok") * llm.calls

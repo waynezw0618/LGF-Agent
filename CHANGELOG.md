@@ -2,6 +2,33 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — P1 前置（成本链路 + 三臂协议）
+
+### 新增 — LLM usage 真实记账
+- `BaseLLM.last_usage` / `usage()` 协议：`OpenAICompatLLM` 捕获服务端 `usage`
+  字段（含 `reasoning_tokens`，n>1 时 completion×n），无服务端值时回退字符估算
+  并标 `estimated=True`；
+- `OpenAICompatLLM(strict=True)` / `make_client(..., strict=True)`：测量脚本专用 ——
+  后端失败直接抛异常，绝不拿回退 `"{}"` 污染测量（heuristic 客户端也回传
+  estimated usage）；
+- `Creator._complete` / `Inspector.review` 记账优先级：服务端 usage > 字符估算
+  （兼容 `usage()` 方法 / `last_usage` 属性 / 两者皆无 三种客户端形态）；
+  耗时（`seconds`）一并计入 CostLedger；
+- 实测：glm-5.3 key 冒烟通过，usage 真实回传（`estimated=False`，
+  reasoning_tokens 单独可分）。
+
+### 新增 — P1 实验脚手架（`examples/asm_basisB2/`）
+- `probe_p1_cost.py`：单题成本探针（方案 §5.1 第一步）—— 一次完整
+  Creator.propose + 一次 Inspector.review 的 tokens/秒/解析率 → R-C-L-K
+  组合外推表（对照三元预算上限）；429 限流时给出可操作提示并干净退出；
+- `run_p1_arms.py`：三臂同预算对照协议（legacy vs agent−Inspector vs
+  agent+Inspector），同任务/同种子/同 `time_budget_s`，两引擎都尊重预算到点
+  即停；heuristic 冒烟已跑通（legacy 0.744 / agent 1.04，stop_reason 正常落盘）。
+
+### 修复
+- `Creator.build_prompt` 调用了不存在的 `render_view(..., shuffle=...)` 形参 ——
+  LLM 路径此前从未被测试触达，假客户端测试首跑即暴露，已改用 `project()`。
+
 ## [0.3.0] — 2026-10-19
 
 按 BasisB2 完整矩阵报告（`outputs/asm/t23basisB2_paper/`）把**多通道系数口径**接入 LGF-Agent。

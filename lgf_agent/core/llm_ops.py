@@ -99,6 +99,50 @@ class BaseLLM:
 
     def is_heuristic(self) -> bool: return False
 
+    # ---- 成本观测 (P1 前置, 2026-10-19) ------------------------------------
+    # 每次 complete() 后更新: {"prompt_tokens": int, "completion_tokens": int,
+    #                        "total_tokens": int, "estimated": bool}
+    # - OpenAICompatLLM 优先回传服务端 usage (estimated=False);
+    # - 其余后端 (heuristic/flask) 给字符数估算 (estimated=True);
+    # - 永不为 None → CostLedger 可以无分支地记账; 停留上一次值即"该后端不报告"。
+    last_usage: Optional[Dict] = None
+
+    def usage(self) -> Optional[Dict]:
+        """返回最近一次调用的用量 (无则 None)。调用方在 complete() 后立即读取。"""
+        return getattr(self, "last_usage", None)
+
+    @staticmethod
+    def _estimate_usage(prompt: str, outputs: Sequence[str], n: int) -> Dict:
+        plen = len(prompt or "")
+        clen = sum(len(o or "") for o in outputs) or int(plen * 0.3 * n)
+        # 中英混排 ~2.2 字符/token (与 agent.runtime.estimate_tokens 同口径)
+        pt = max(1, int(plen / 2.2))
+        ct = max(1, int(clen / 2.2))
+        return {"prompt_tokens": pt, "completion_tokens": ct,
+                "total_tokens": pt + ct, "estimated": True}
+
+    def _usage_from(self, data: Dict, prompt: str, outputs: Sequence[str],
+                    n: int) -> Dict:
+        """从服务端响应解析 usage; 缺失时退回字符估算。
+
+        OpenAI 兼容 usage 的 completion_tokens **已含 reasoning tokens**
+        (glm-5.3 实测: usage.completion = content + reasoning), 且 n>1 时
+        服务端通常只报合并值 — 因此直接取响应值, 不按 len(outputs) 折算。
+        部分供应商放在 usage.completion_tokens_details.reasoning_tokens。
+        """
+        u = data.get("usage") if isinstance(data, dict) else None
+        if isinstance(u, dict):
+            pt = int(u.get("prompt_tokens") or 0)
+            ct = int(u.get("completion_tokens") or 0)
+            det = u.get("completion_tokens_details") or {}
+            rt = int((det or {}).get("reasoning_tokens") or 0) if isinstance(det, dict) else 0
+            if pt > 0 or ct > 0:
+                return {"prompt_tokens": pt, "completion_tokens": ct,
+                        "reasoning_tokens": rt,
+                        "total_tokens": int(u.get("total_tokens") or (pt + ct)),
+                        "estimated": False}
+        return self._estimate_usage(prompt, outputs, n)
+
 
 class HeuristicLLM(BaseLLM):
     """离线启发式 LLM 模拟器, 用规则生成合理输出, 用于离线开发与基线测试."""
@@ -108,16 +152,19 @@ class HeuristicLLM(BaseLLM):
         # 调用方根据 prompt 关键字路由
         kind = _infer_prompt_kind(prompt)
         if kind == "T_PROP":
-            return [_templates_json()]
-        if kind == "G_INIT":
-            return [_initial_graphs_json(prompt)]
-        if kind == "H_DECOMP":
-            return [_decomp_json(prompt)]
-        if kind == "M_GUIDE":
-            return [_mutations_json(prompt)]
-        if kind == "E_CHECK":
-            return [_equivalence_json(prompt)]
-        return ["{}"]
+            out = [_templates_json()]
+        elif kind == "G_INIT":
+            out = [_initial_graphs_json(prompt)]
+        elif kind == "H_DECOMP":
+            out = [_decomp_json(prompt)]
+        elif kind == "M_GUIDE":
+            out = [_mutations_json(prompt)]
+        elif kind == "E_CHECK":
+            out = [_equivalence_json(prompt)]
+        else:
+            out = ["{}"]
+        self.last_usage = self._estimate_usage(prompt, out, 1)
+        return out
 
 
 def _infer_prompt_kind(prompt: str) -> str:
@@ -169,6 +216,7 @@ class HttpFlaskLLM(BaseLLM):
             content = data.get("content")
             if not content:
                 raise ValueError(f"响应缺少非空 'content' 字段, 实际 keys={list(data)[:8]}")
+            self.last_usage = self._usage_from(data, prompt, list(content), n)
             return list(content)
         except Exception as e:
             _report_failure("flask", self.url, e)
@@ -207,12 +255,16 @@ class OpenAICompatLLM(BaseLLM):
     def __init__(self, base_url: str, api_key: Optional[str] = None,
                  model: Optional[str] = None, temperature: float = 0.7,
                  timeout: float = 60.0, max_tokens: Optional[int] = None,
-                 extra_body: Optional[Dict] = None):
+                 extra_body: Optional[Dict] = None,
+                 strict: bool = False):
         self.base_url = base_url.rstrip("/")
         self.api_key = resolve_api_key(api_key)
         self.model = model or "gpt-3.5-turbo"
         self.temperature = temperature
         self.timeout = timeout
+        # strict=True 时后端失败直接抛异常而不是回退 ["{}"] —— 供成本探针等
+        # 测量脚本使用: 拿着假回退结果测出来的 tokens/秒是垃圾数据, 宁可停。
+        self.strict = strict
         # V4 (2026-10-12): 思考模型 (GLM 5.3 / MiniMax M2.7) 的 reasoning tokens
         # 计入 max_tokens 配额 — 不显式给足时 content 会被 reasoning 吃光返回空
         # (实测 glm-5.1 简单 "hi" 花 1147 reasoning tokens). None = 不发送该字段.
@@ -256,9 +308,12 @@ class OpenAICompatLLM(BaseLLM):
             out = [s for s in out if s]     # 剥离后为空(纯思考被截断)的丢弃
             if not out:
                 raise ValueError(f"'choices' 中无有效 content, 响应片段={str(data)[:200]}")
+            self.last_usage = self._usage_from(data, prompt, out, n)
             return out
         except Exception as e:
             _report_failure("openai", self.url, e)
+            if self.strict:
+                raise
             return ["{}"]
 
 
@@ -266,7 +321,8 @@ def make_client(backend: str, *, url: Optional[str] = None, model: Optional[str]
                 api_key: Optional[str] = None,
                 temperature: float = 0.7, timeout: float = 60.0,
                 max_tokens: Optional[int] = None,
-                extra_body: Optional[Dict] = None) -> BaseLLM:
+                extra_body: Optional[Dict] = None,
+                strict: bool = False) -> BaseLLM:
     """按后端类型构造 LLM 客户端.
 
     model:
@@ -292,7 +348,8 @@ def make_client(backend: str, *, url: Optional[str] = None, model: Optional[str]
         return OpenAICompatLLM(base_url=url or "https://api.openai.com/v1",
                                api_key=api_key, model=model,
                                temperature=temperature, timeout=timeout,
-                               max_tokens=max_tokens, extra_body=extra_body)
+                               max_tokens=max_tokens, extra_body=extra_body,
+                               strict=strict)
     raise ValueError(f"未知 backend: {backend}")
 
 

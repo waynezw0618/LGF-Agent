@@ -29,15 +29,24 @@ python examples/asm_basisB2/run_refit_replay.py --data <上层>/outputs/asm
 
 # 3) 汇总 runs_basisB2 复现报告 §3.1 矩阵（纯读取）+ 冠军公式通道归因
 python examples/asm_basisB2/run_matrix_replay.py
+
+# 4) P1 第一步：实测单题成本（GLM-5.3，key 在仓库 .env）→ 推 R-C-L-K 组合
+python examples/asm_basisB2/probe_p1_cost.py --n 3
+
+# 5) P1 主实验：三臂同预算对照（legacy vs agent±Inspector；先 heuristic 验证协议）
+python examples/asm_basisB2/run_p1_arms.py --budget 60
+python examples/asm_basisB2/run_p1_arms.py --budget 600 --backend openai   # 真 LLM
 ```
 
-## 三个脚本各验证什么
+## 四个脚本各验证什么
 
 | 脚本 | 验证 | 需要上层工程？ |
 |---|---|---|
 | `run_offline_demo.py` | 白化/靶标/加权口径正确；BasisB2Domain 13 动作全链路离线可跑；两级口径差可复现（refit 治愈抵消结构） | 否（demo 数据即可） |
 | `run_refit_replay.py` | LGF-Agent **独立复算**终口径数字（e 0.0576 ±5%）——自包含性证明 | 是（完整数据 + runs） |
 | `run_matrix_replay.py` | 报告 §3.1 的 27 组矩阵可从 result.json 机器重读 + 冠军 DSL 变量归因 | 是（runs） |
+| `probe_p1_cost.py` | GLM-5.3 单题实测成本（tokens/秒/解析率）→ R-C-L-K 组合外推；strict 模式，429 即停不出假数据 | 否（key 即可） |
+| `run_p1_arms.py` | 三臂同预算对照协议（同任务/同种子/同 time_budget_s）；heuristic 先验证，真 LLM 换 `--backend openai` | 否 |
 
 ## 与 asm_b23（旧单通道口径）的关系
 

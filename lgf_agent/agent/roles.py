@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -73,8 +74,7 @@ class Creator:
                      branch_prior: str = "", obs_log: Optional[List[str]] = None,
                      skills: Optional[Dict[str, str]] = None) -> str:
         view = render_view(pool, view=getattr(self.cfg, "agent_projector", "pareto"),
-                           max_n=getattr(self.cfg, "agent_max_ctx_candidates", 8),
-                           shuffle=False)
+                           max_n=getattr(self.cfg, "agent_max_ctx_candidates", 8))
         task = ""
         if self.domain is not None and hasattr(self.domain, "task_card"):
             task = self.domain.task_card()
@@ -94,6 +94,7 @@ class Creator:
 
     # ---------------- 采样 ----------------
     def _complete(self, prompt: str, n: int = 1) -> List[str]:
+        t0 = time.time()
         try:
             out = self.llm.complete(prompt, n=n)
         except Exception as e:                                  # noqa: BLE001
@@ -102,11 +103,23 @@ class Creator:
             return []
         if isinstance(out, str):
             out = [out]
-        toks = sum(estimate_tokens(p) for p in [prompt] + list(out))
+        # 记账优先级: 服务端 usage (last_usage, estimated=False) > 字符估算。
+        # 兼容三种客户端形态: usage() 方法 (BaseLLM) / last_usage 属性 / 两者皆无。
+        u = None
+        _get = getattr(self.llm, "usage", None)
+        if callable(_get):
+            u = _get()
+        if not isinstance(u, dict) or not u.get("total_tokens"):
+            u = getattr(self.llm, "last_usage", None)
+        if isinstance(u, dict) and u.get("total_tokens"):
+            toks = int(u["total_tokens"])
+        else:
+            toks = sum(estimate_tokens(p) for p in [prompt] + list(out))
+        dt = time.time() - t0
         if self.ledger:
-            self.ledger.add("creator", tokens=toks)
+            self.ledger.add("creator", tokens=toks, seconds=dt)
         if self.ctx is not None:
-            self.ctx.charge(tokens=float(toks))
+            self.ctx.charge(tokens=float(toks), seconds=dt)
         return list(out)
 
     # ---------------- 主入口 ----------------
@@ -303,6 +316,7 @@ class Inspector:
                   f"数值探针报告 (权威):\n{_json.dumps(report, ensure_ascii=False, default=str)[:2400]}\n"
                   f"数值裁决: {numeric_verdict}\n"
                   f"请按 system 要求输出 JSON。")
+        t0 = time.time()
         try:
             reps = self.llm.complete(prompt, n=1)
         except Exception as e:                                  # noqa: BLE001
@@ -312,10 +326,20 @@ class Inspector:
         text = reps[0] if isinstance(reps, list) and reps else (reps if isinstance(reps, str) else "")
         if not text:
             return None
-        toks = estimate_tokens(prompt) + estimate_tokens(text)
+        u = None
+        _get = getattr(self.llm, "usage", None)
+        if callable(_get):
+            u = _get()
+        if not isinstance(u, dict) or not u.get("total_tokens"):
+            u = getattr(self.llm, "last_usage", None)
+        if isinstance(u, dict) and u.get("total_tokens"):
+            toks = int(u["total_tokens"])
+        else:
+            toks = estimate_tokens(prompt) + estimate_tokens(text)
+        dt = time.time() - t0
         if self.ledger:
-            self.ledger.add("inspector", tokens=toks)
-        self.ctx.charge(tokens=float(toks))
+            self.ledger.add("inspector", tokens=toks, seconds=dt)
+        self.ctx.charge(tokens=float(toks), seconds=dt)
         return parse_agent_response(text, tool_names=())
 
 
