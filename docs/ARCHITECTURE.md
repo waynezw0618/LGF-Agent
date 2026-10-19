@@ -45,6 +45,23 @@
 > **为什么强制二分**：曾有错误断言（T1s 反对称）以"事实"身份进入 prompt 并无机制核对。
 > 现在凡写进 `verified_assertions()` 的内容都必须有一条探针能证伪它。
 
+ASM 域内**两套口径并存**（同一内核与动作层，2026-10-19 起）：
+
+| 口径 | 公式 | 模块 | 示例 |
+|---|---|---|---|
+| 单通道（旧） | `b23 = g(Θ)·T23` | `domain.py`（`ASMDomain`） | `examples/asm_b23/` |
+| 多通道系数（新） | `b23 = Σ_j s_j·a_j(Θ)·T̃_j23` | `basisb2.py`（`BasisB2Domain`）+ `refit.py`（终口径） | `examples/asm_basisB2/` |
+
+多通道口径的两个关键设计：
+
+1. **一条系数 = 一个标准任务**。多通道不是单任务多目标，而是 J 条独立 SR 任务
+   （`BasisB2Domain(target_index=j)`，13 个动作全链路可用）+ 终口径
+   `refit.joint_refit` 把 J 条公式拼起来联合抛光。这正是报告的"SR 找形状 +
+   联合定常数"两阶段法的落地。
+2. **终口径可独立复算**。`refit.replay_run_refit` 从上层 `runs_basisB2/*/result.json`
+   读冠军 DSL，在包内重做联合 LM —— 实测 e 0.0576 / g 0.1238 / m 0.0722 /
+   v 2.2305 全部 rel 0.00%（含逐工况逐位一致）。框架自包含，数字不是引用报告。
+
 ### L1 动作层 — `lgf_agent/tools.py`
 
 ```python
@@ -173,7 +190,7 @@ class MyDomain(DomainAdapter):
 ## 5. 测试与复现
 
 ```bash
-pytest -q                                                  # 48 项离线测试
+pytest -q                                                  # 57 项离线测试
 python examples/asm_b23/run_p0_verify.py                   # 回灌 + 奇偶性机器判定 + 通道归因
 ```
 
@@ -185,6 +202,7 @@ python examples/asm_b23/run_p0_verify.py                   # 回灌 + 奇偶性�
 | `test_verify.py` | 5 硬规则的正/反例、非数值约束降级、探针异常降级、汇总裁决 |
 | `test_tools_agent.py` | 注册表、软错误、观测有界、成本账本、响应解析鲁棒性、离线端到端、时间预算 |
 | `test_asm_domain.py` | 数据加载、度量口径、任务卡、**C1 奇偶性机器判定**、C1–C9 齐备、诱饵用例 |
+| `test_basisb2_domain.py` | 多通道口径：RMS 归一/联合解量级/SR 权重对齐、任务卡与种子、**冠军 refit 独立复算（e 0.0576, rel 0.00%）**、PySR 内联常量参数化、demo 端到端两级口径、矩阵读取（上层工程不可用时自动 skip） |
 | `test_analysis.py` | 三套通道命名解析、**LOCO 对已知真值的回收（<1e-6）**、公式未引用 vs 池无通道两个分支、archive 结构查询可重放、动作注册 |
 
 ## 6. 已知限制

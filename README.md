@@ -27,13 +27,17 @@
 
 ```bash
 pip install -e .            # 或: pip install -r requirements.txt
-pytest -q                   # 48 项测试, 全部离线, 不需要 LLM key
+pytest -q                   # 57 项测试, 全部离线, 不需要 LLM key
 
-# 1) 离线跑通 R-C-L-K 循环 (用打包的 64 点/工况样例数据)
+# 1) 单通道口径: 离线 R-C-L-K + P0 判决点 (奇偶性机器判定 + 通道归因)
 python examples/asm_b23/run_offline_demo.py
-
-# 2) P0 判决点: 回灌历史产物 + 机器判定奇偶性断言 + 通道归因
 python examples/asm_b23/run_p0_verify.py
+
+# 2) 多通道系数口径 (basisB2, 2026-10-19 报告轮):
+python examples/asm_basisB2/pack_demo.py            # 一次性: 生成精简样例
+python examples/asm_basisB2/run_offline_demo.py     # stage base + 单系数任务 + 两级口径
+python examples/asm_basisB2/run_refit_replay.py --data <上层>/outputs/asm   # 复算冠军 0.0576
+python examples/asm_basisB2/run_matrix_replay.py    # 报告 §3.1 矩阵重读
 ```
 
 一站式回答"最优公式到底有没有用张量通道"（不再需要一次性脚本）：
@@ -69,17 +73,22 @@ res = run_agent(dom, cfg, llm_client=client, out_dir="outputs")
 print(res["best"]["dsl"], res["best"]["loss"], res["admit_ratio"])
 ```
 
-## 示例域：旋转槽道流 ASM 张量基闭合
+## 示例域：旋转槽道流 ASM 张量基闭合（两套口径）
 
-当前口径（开发中）：
+**多通道系数口径**（2026-10-19 报告轮，`examples/asm_basisB2/`）：
 
-$$b_{23}(y) = g\!\left(I_1, I_2, \ldots, \mathrm{Ro}_{loc}, \mathrm{Re}_t\right)\cdot T_{23}$$
+$$b_{23} = \sum_{j} s_j \, a_j(\Theta)\cdot \tilde T^{(j)}_{23}$$
 
-- $I_i$ 为 **Pope (1975) 完整性基**的 5 个不变量：`eta2=tr(S²)`、`zeta2=tr(W²)`、`s3=tr(S³)`、`so2=tr(SW²)`、`s2o2=tr(S²W²)`
-- `Ro_loc = 2Ωk/ε`、`Re_t = k²/(νε)` 为局部分辨标量扩展；`yw = 1-|y/h|` 为壁面扩展（非局部，但本工程证明确需）
-- 物理背景：Yang & Wang 2018 JFM 838，Re_τ = 180，Ro_τ ∈ {7.5, 15, 30, 75, 150}，系统旋转沿流向
+- $J$=4（v/g/e 基：T1s/T5s/T6s/T10s）或 10（m 混合池）；通道逐工况 RMS 归一；
+- $\Theta=\{\eta_2,\zeta_2,S^2/\Omega^2,Re_\tau,r_{o,loc},y_w\}$（yw∈[0,1]）；
+- **两级口径**：中间（SR 逐通道估常数重组）/ 终（固定形状联合 LM refit，
+  `refit.py` 可独立复算报告冠军 e **0.0576** / m 0.0722 / g 0.1238，rel 0.00%）；
+- 拟合权重 $w=\tilde U_j^2/(N_v\,\mathrm{var}_c)$：系数误差逐点等于该通道对 b23 的 NMSE 贡献。
 
-域内提供 **C1–C9 九条数值探针约束**：奇偶对称 / 张量可表性 / 值域 / 全局常数 / LOSO / 量纲 / 数值鲁棒 / 复杂度 / 反作弊。
+**单通道口径**（旧，`examples/asm_b23/`）：$b_{23}=g(\Theta)\cdot T_{23}$，P0 判决点示例仍在用。
+
+两口径共用同一内核、13 个动作与 C1–C9 探针。域内提供 **C1–C9 九条数值探针约束**：
+奇偶对称 / 张量可表性 / 值域 / 全局常数 / LOSO / 量纲 / 数值鲁棒 / 复杂度 / 反作弊。
 
 ## 设计原则
 
@@ -99,10 +108,11 @@ lgf_agent/
   analysis.py    L2 分析: 通道命名解析 / 结构判定 / leave-one-channel-out 数值归因
   verify/        约束层: Constraint 协议 + 5 硬规则泛化
   agent/         L3/L4: runtime / roles(Creator,Inspector) / scheduler(R-C-L-K) / skills
-  domains/       L0: base 协议 + asm 示例域 (含 skills 知识卡)
-examples/asm_b23/  可运行示例 (+ 打包的精简样例数据)
-tests/             48 项离线测试
-docs/              架构说明与升级方案
+  domains/       L0: base 协议 + asm 示例域 (单通道 + basisB2 多通道系数口径)
+examples/asm_b23/      单通道口径示例 (+ 打包样例数据, P0 判决点)
+examples/asm_basisB2/  多通道系数口径示例 (demo 打包 / 离线任务 / 冠军复算 / 矩阵重读)
+tests/                 57 项离线测试
+docs/                  架构说明与升级方案
 ```
 
 ## 参考文献

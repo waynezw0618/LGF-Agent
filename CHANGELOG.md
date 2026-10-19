@@ -2,6 +2,40 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] — 2026-10-19
+
+按 BasisB2 完整矩阵报告（`outputs/asm/t23basisB2_paper/`）把**多通道系数口径**接入 LGF-Agent。
+ASM 降级为纯示例（example），并新增独立的 `examples/asm_basisB2/` 测试目录。
+
+### 新增 — 多通道系数口径 (`lgf_agent/domains/asm/basisb2.py`)
+报告口径的完整实现（与上层 `scripts/rc_asm_basisB2.py` 数值对齐）：
+- `b23 = Σ_j s_j·a_j(Θ)·T̃_j23`：J=4（v/g/e）或 J=10（m 池），通道逐工况 RMS 归一；
+- `stage_base()`：结构化联合加权 lstsq（48 参数）→ β_j 逐点靶标（白化可选，报告轮 `use_whiten=False`）;
+- `sr_cases_for_target()`：一条系数 a_j 的 SR 任务（X=Θ, y=β_j/s_j, w=Ũ_j²/(Nv·var_c)）；
+- `BasisB2Domain`：DomainAdapter 实现 —— 13 个动作全链路可用（离线 R-C-L-K 实测跑通），
+  task_card 含两阶段口径说明 / 通道物理角色 / 结构提示。
+
+### 新增 — 终口径联合重拟合 (`lgf_agent/domains/asm/refit.py`)
+- `compile_expr()`：LGF DSL 参数化 + **PySR 内联常量参数化**（同一 LM 抛光协议，报告 §1 公平性条款）；
+- `joint_refit()`：固定形状联合 LM 最小化重组 NMSE；`refit_intermediate()`：中间口径；
+- `replay_run_refit()`：回放上层 runs_basisB2 冠军 —— **独立复算验证：e 0.0576 / g 0.1238 /
+  m 0.0722 / v 2.2305，8/8 口径 rel 0.00%（含逐工况 NMSE 逐位一致）**；
+- `collect_matrix()`：28 组 result.json → 报告 §3.1 矩阵机器重读。
+
+### 新增 — `examples/asm_basisB2/`（独立测试目录）
+| 脚本 | 验证 | 依赖 |
+|---|---|---|
+| `pack_demo.py` | 从上层完整 npz 抽 64 点/工况精简样例（v/g/e 三套，~48 KB each） | 上层（一次性） |
+| `run_offline_demo.py` | stage base + 单系数任务离线 R-C-L-K + 两级口径差（实测 4.6×） | 无（demo 数据） |
+| `run_refit_replay.py` | 独立复算 4 个冠军组终口径，对账 0.0576/0.1238/0.0722/2.2305 | 上层完整数据 + runs |
+| `run_matrix_replay.py` | 报告 §3.1 的 28 组矩阵重读 + 冠军 DSL 变量归因 | 上层 runs |
+
+### 测试
+- 新增 `tests/test_basisb2_domain.py`（9 项）：RMS 归一 / 48 参数联合解量级 / SR 权重逐字对齐 /
+  任务卡与种子解析 / **champion refit 复算（±5% 内，实测 0.00%）** / PySR 内联常量参数化 /
+  demo 端到端两级口径 / 矩阵读取。上层工程不可用时自动 skip。
+- 全量：**57 passed**（0.2.0 时为 48）。
+
 ## [0.2.0] — 2026-10-16
 
 补齐 **P0 判决点第 2 条**: 通道归因。历史上"最优公式到底有没有用张量基通道"这个问题
