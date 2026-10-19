@@ -1,0 +1,22 @@
+\contentsline {section}{\numberline {1}问题定义：basisB2 多通道系数口径}{2}{section.1}%
+\contentsline {paragraph}{两级口径。}{2}{paragraph*.2}%
+\contentsline {section}{\numberline {2}LGF-Agent 框架概要}{2}{section.2}%
+\contentsline {section}{\numberline {3}实验协议}{2}{section.3}%
+\contentsline {paragraph}{任务。}{2}{paragraph*.4}%
+\contentsline {paragraph}{三臂。}{3}{paragraph*.5}%
+\contentsline {paragraph}{底座。}{3}{paragraph*.6}%
+\contentsline {paragraph}{单题成本实测（P1 第一步）。}{3}{table.caption.8}%
+\contentsline {section}{\numberline {4}P1 结果：同预算三臂对照}{3}{section.4}%
+\contentsline {paragraph}{要点。}{3}{paragraph*.10}%
+\contentsline {paragraph}{冠军公式（agent\_no\_insp，中间口径 0.0995）。}{3}{paragraph*.11}%
+\contentsline {section}{\numberline {5}终口径替换实验（本报告核心正面结果）}{4}{section.5}%
+\contentsline {paragraph}{动机。}{4}{paragraph*.12}%
+\contentsline {paragraph}{发现。}{4}{paragraph*.14}%
+\contentsline {section}{\numberline {6}P2：多种子重复（进行中）}{4}{section.6}%
+\contentsline {section}{\numberline {7}诚实声明与局限}{5}{section.7}%
+\contentsline {section}{\numberline {8}结论}{5}{section.8}%
+\contentsline {paragraph}{后续。}{5}{paragraph*.15}%
+\contentsline {section}{\numberline {A}冠军公式 DSL 原文与终口径参数}{5}{appendix.A}%
+\contentsline {paragraph}{agent\_no\_insp 中间口径冠军（0.0995，12 参）。}{5}{paragraph*.16}%
+\contentsline {paragraph}{swap 基准：e\_lgf\_mg\_big 的 $a_2$（5 参）。}{5}{paragraph*.17}%
+\contentsline {paragraph}{终口径抛光后的参数（H1，agent\_no\_insp）。}{5}{paragraph*.18}%

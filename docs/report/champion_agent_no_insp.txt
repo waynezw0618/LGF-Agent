@@ -1,0 +1,1 @@
+C1*(yw)*(sqrt(roloc)/(C2+sqrt(roloc))) + C3*(yw) + C4*(log((eta2+C5)/(eta2+C6))) + C7 + C8*(eta2/(C9+eta2)) + C10*(yw*yw) + C11*(yw)*(roloc/(C12+roloc))

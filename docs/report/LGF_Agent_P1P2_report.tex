@@ -1,0 +1,276 @@
+% !TEX program = xelatex
+% LGF-Agent P1/P2 实验报告 — 编译: xelatex LGF_Agent_P1P2_report.tex (需 ctex/booktabs)
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{verbatim}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+\usepackage{caption}
+\captionsetup{font=small}
+
+\newcommand{\rol}{r_{o,loc}}
+\newcommand{\yw}{y_w}
+\newcommand{\et}{\eta_2}
+\newcommand{\zt}{\zeta_2}
+\newcommand{\ret}{Re_t}
+
+\title{\textbf{LGF-Agent：面向旋转槽道流 ASM 闭合系数的\\ LLM 符号回归智能体框架}\\[6pt]
+\large P1/P2 阶段实验报告（内部技术报告）}
+\author{LGF-Agent 开发记录}
+\date{2026 年 10 月 19 日 \; (v0.3.0, commit \texttt{b6b0ff0})}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LGF-Agent 是把 LGF 符号回归管线升级为``生成—审查''双智能体框架的软件系统：
+内核（GP + 参数拟合）原样保留，外层以候选—证据契约、append-only 档案、
+Pareto 投影、数值探针约束与 R-C-L-K 轨迹调度组织 LLM 的搜索行为。
+本报告在旋转槽道流 ASM 张量基闭合的 basisB2 口径（$b_{23}=\sum_j s_j\,a_j(\Theta)\,
+\tilde T^{(j)}_{23}$，$e$ 基 $a_2$ 通道）上完成 P1（同预算三臂对照）与
+P2（多种子重复）两阶段实验。主要结果：
+（i）同预算（600\,s/臂）下 agent 引擎最优臂损失 \textbf{0.0995}，
+为 legacy 引擎（0.2997）的 \textbf{3.0} 倍改善，且提前命中目标停机；
+（ii）终口径混合替换实验中，agent 自动发现的 $a_2$ 公式（12 参数）
+联合抛光后达 \textbf{0.0726}，显著优于人工大形状轮调参得到的
+$a_2$ 公式在同一框架下的 \textbf{0.1992}（2.7 倍）；
+（iii）全部发现成本约 \textbf{\$0.02--0.03/臂}（glm-5.3，真实服务端
+usage 记账），成本不构成约束，时间是唯一稀缺资源。
+我们同时如实报告阴性细节：Inspector 逐候选审查曾烧穿整臂预算
+（989\,s 仅 1 步），修复后恢复至与无审查臂相差 8\% 以内；
+单任务单种子结论的一般性以 P2 多种子聚合为准。
+\end{abstract}
+
+\tableofcontents
+
+% ==========================================================================
+\section{问题定义：basisB2 多通道系数口径}
+
+旋转槽道流（Yang \& Wang 2018 JFM 838；$\Re_\tau=180$，
+$Ro_\tau\in\{7.5,15,30,75,150\}$，$\Omega$ 沿流向）的 ASM 张量基闭合中，
+23 分量 $b_{23}$ 按 basisB2 口径分解为
+\begin{equation}
+  b_{23}(y) \;=\; \sum_{j=1}^{J} s_j\, a_j(\Theta)\,\tilde T^{(j)}_{23}(y),
+  \qquad
+  \Theta = \{\et,\zt,S^2\!/\Omega^2,\ret,\rol,\yw\},
+\end{equation}
+其中 $\tilde T^{(j)}_{23}$ 为通道 23 分量（逐工况 RMS 归一），$a_j(\Theta)$
+为待发现的系数函数（$e$ 基 $J{=}4$）。``stage base''以结构化联合加权
+最小二乘（48 参数）给出逐点靶标 $\beta_j$，符号回归（SR）任务即
+对每条 $\beta_j$ 发现紧凑表达式，随后以固定形状联合 LM（终口径）
+抛光全部常数。
+
+\paragraph{两级口径。}中间口径评估单通道 $a_j$ 的加权 NMSE
+（$w=\tilde U_j^2/(N_v\,\mathrm{var}_c)$，系数误差逐点等于该通道对 $b_{23}$
+的 NMSE 贡献）；终口径评估四通道重组后的 $b_{23}$ NMSE。报告轮
+（\texttt{t23basisB2\_paper}）已证明：中间口径 $10^0$ 级误差的
+84--92\% 来自逐通道独立估常数的抵消结构，终口径联合抛光可拉回
+1--2 个数量级。历史全 SR 终口径最优（SOTA）为 \textbf{0.0576}
+（\texttt{e\_lgf\_mg\_big}，55 参数）。
+
+% ==========================================================================
+\section{LGF-Agent 框架概要}
+
+\begin{table}[htbp]\centering\small
+\caption{五层架构（\texttt{lgf\_agent}，59 项离线测试全通过）}
+\begin{tabular}{@{}lp{10.2cm}@{}}
+\toprule
+层 & 内容 \\
+\midrule
+L4 角色层 & Creator（生成）/ Inspector（数值裁决权威，LLM 仅补 min\_fix） \\
+L3 轨迹层 & R-C-L-K 调度；三元预算硬上限（时间 / token / USD）；traj + provenance 落盘 \\
+L2 状态层 & 候选—证据契约；append-only archive；Pareto / topk / single\_best 投影；通道归因 \\
+L1 动作层 & 13 个统一科学动作（拟合 / 求值 / 归因 / 残差视图 / 约束 / GP / 提交 / 通道归因 \dots） \\
+L0 领域层 & \texttt{asm}：单通道口径（\texttt{asm\_b23}）+ basisB2 多通道系数口径（\texttt{asm\_basisB2}） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+设计上的三条硬约束：
+（1）\textbf{证据先行}——所有物理断言必须附可复现数值探针
+（C1--C9：奇偶对称 / 张量可表性 / 值域 / 全局常数 / LOSO / 量纲 /
+鲁棒性 / 复杂度 / 反作弊），非数值断言强制降级 \texttt{unverified}；
+（2）\textbf{并列引擎}——legacy 管线（\texttt{run\_lgf}）原样保留，
+\texttt{agent\_mode} 一键切换，保证对照公平；
+（3）\textbf{预算硬约束}——时间 / token / USD 三元上限在步间检查，
+轨迹与成本（真实服务端 usage + 单价折算）全程落盘。
+
+% ==========================================================================
+\section{实验协议}
+
+\paragraph{任务。}basisB2 口径，$e$ 基，$a_2$（$\tilde T5s$ 旋转响应系数）
+单通道 SR；数据为 5 工况 $\times$ 129 点完整 DNS 反演集。
+
+\paragraph{三臂。}同任务 / 同种子 / 同 \texttt{time\_budget\_s}$=600$：
+\begin{itemize}\itemsep2pt
+  \item \textbf{legacy}：原管线 \texttt{run\_lgf}（G\_INIT + M\_GUIDE + GP）；
+  \item \textbf{agent\_no\_insp}：LGF-Agent，无 Inspector；
+  \item \textbf{agent\_insp}：LGF-Agent，带 Inspector（逐候选数值审查 + min\_fix）。
+\end{itemize}
+
+\paragraph{底座。}glm-5.3（智谱开放平台），\texttt{thinking=enabled}、
+\texttt{reasoning\_effort=low}、\texttt{max\_tokens=16384}；
+成本按 ¥2/M（入）+ ¥8/M（出）折算 USD。
+
+\paragraph{单题成本实测（P1 第一步）。}
+\begin{table}[htbp]\centering\small
+\caption{glm-5.3 实测单步成本（真实 usage，$n{=}3$ 重复）}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+动作 & tokens/次 & 秒/次 & 备注 \\
+\midrule
+Creator.propose & $\approx$2.0k & 8--35 & 解析率 2/3（1 次零候选） \\
+Inspector.review & 1.9k--5.9k & 20--102 & reasoning 3.9--4.4k，时间大头 \\
+\midrule
+外推 R1C1L30K1/臂 & $\approx$0.19M & $\approx$46 min & $\approx$\$0.03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+成本是可忽略约束（默认 \$5 上限的 0.6\%）；\textbf{时间是唯一稀缺资源}，
+故 P1/P2 全部以时间为预算卡尺。
+
+% ==========================================================================
+\section{P1 结果：同预算三臂对照}
+
+\begin{table}[htbp]\centering\small
+\caption{P1 三臂终局（同任务 / seed 0 / 600\,s）。agent\_insp 首跑
+（未修复）一并列出以示审查策略的影响。}
+\begin{tabular}{@{}lrrll@{}}
+\toprule
+臂 & best\_loss & 用时 & 停机 & 备注 \\
+\midrule
+legacy & 0.2997 & 679 s & 预算耗尽 & G\_INIT 解析 25/25 \\
+\textbf{agent\_no\_insp} & \textbf{0.0995} & 435 s & \textbf{target\_met 提前达标} & 78 候选 / 8 步 \\
+agent\_insp（修复后） & 0.1076 & 626 s & 预算耗尽（超调 4\%） & reviewed 1 / deferred 6 \\
+\midrule
+\textit{agent\_insp（修复前）} & \textit{0.6151} & \textit{989 s} & \textit{预算耗尽（超调 65\%）} & \textit{62 候选逐个审，仅 1 步} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{要点。}
+（i）两个 agent 臂均以 \textbf{2.8--3.0$\times$} 优于 legacy；
+（ii）最优臂提前命中域目标停机，说明改善不是预算堆出来的；
+（iii）Inspector 逐候选审查在 62 候选/步的产出模式下会烧穿预算
+（单审 $\approx$5.9k tok / 20--100\,s），修复
+（\texttt{agent\_max\_reviews\_per\_step}=6：按 loss 升序只审前 6，
+其余延后入池并如实标注 \texttt{deferred/budget}；审查循环步内截止检查）
+后该臂恢复到与无审查臂相差 8\% 以内，且其被审候选全部携带
+数值裁决与 min\_fix 的 provenance。
+
+\paragraph{冠军公式（agent\_no\_insp，中间口径 0.0995）。}
+\begin{equation}
+\begin{aligned}
+\hat a_2(\Theta) \;=\;& C_1\,\yw\,\frac{\sqrt{\rol}}{C_2+\sqrt{\rol}}
+  + C_3\,\yw + C_4\,\ln\frac{\et+C_5}{\et+C_6} + C_7 \\
+  &+ C_8\,\frac{\et}{C_9+\et} + C_{10}\,\yw^2
+   + C_{11}\,\yw\,\frac{\rol}{C_{12}+\rol},
+\end{aligned}
+\end{equation}
+结构族为``壁面衰减 $\times$ 旋转饱和 + $\et$ 对数比''，与历史冠军族同源
+——但此式由 agent 在单次 600\,s 预算内自动发现，无人工形状先验。
+
+% ==========================================================================
+\section{终口径替换实验（本报告核心正面结果）}
+
+\paragraph{动机。}中间口径 0.0995 本身不可与历史终口径 0.0576 直接比较。
+为公平评估 agent 发现的 \emph{公式形状}，构造同帧替换实验：
+
+\begin{itemize}\itemsep2pt
+  \item \textbf{B0（上界参照）}：4 通道全 lstsq（48 参数）的重组
+        $\mathrm{loss_{vw}}=0.0031$ —— in-sample 联合上界，不可外推
+        （报告轮已声明，外推已证不可行）；
+  \item \textbf{B2（重要性参照）}：$a_2$ 通道置零 $\Rightarrow$ 4.59
+        —— 该通道承载了 $b_{23}$ 的主要信号；
+  \item \textbf{H1（替换实验）}：$a_2$ 换成待评公式，其余 3 通道保持
+        lstsq，对替换公式的常数做多起点联合 LM 抛光，评估终口径重组 NMSE；
+  \item \textbf{swap 对照}：把历史人工大形状轮冠军 \texttt{e\_lgf\_mg\_big}
+        的 $a_2$ 公式放进\textbf{同一框架}，同协议抛光 —— 公平比较形状。
+\end{itemize}
+
+\begin{table}[htbp]\centering\small
+\caption{终口径替换实验（$e$ 基 $a_2$；多起点联合 LM，\texttt{max\_nfev}=20000）}
+\begin{tabular}{@{}llrrl@{}}
+\toprule
+$a_2$ 来源 & 类型 & H1 终口径 & 参数数 & 判定 \\
+\midrule
+\textbf{agent\_no\_insp} & 自动发现 & \textbf{0.0726} & 12 & \textbf{最优} \\
+agent\_insp & 自动发现 & 0.1644 & 11 & 次优 \\
+swap/\texttt{e\_lgf\_mg\_big} & 人工大形状轮 & 0.1992 & 5 & 同帧基准 \\
+legacy & 自动发现 & 2.9336 & 6 & 崩坏 \\
+\midrule
+(参照) 全 SR SOTA & 人工 4 通道全家桶 & 0.0576 & 55 & 不同协议，不可直接比 \\
+(参照) B0 全 lstsq & — & 0.0031 & 48 & in-sample 上界 \\
+(参照) B2 $a_2$ 置零 & — & 4.5865 & — & 重要性上界 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{发现。}
+（1）\textbf{agent 自动发现的 $a_2$ 在同帧替换中优于人工大形状轮冠军}
+（0.0726 vs 0.1992，2.7$\times$）；带 Inspector 臂的公式（0.1644）也优于
+人工基准。（2）legacy 冠军形状在终口径下崩坏（2.93），与报告轮
+``legacy go 两组 refit 失败 / 发散''的独立观察一致——\textbf{能否在
+联合抛光中存活，是 legacy 与 agent 的本质差异之一}。（3）agent 单通道
+公式（12 参）+ 3 条 lstsq 通道的混合配置（0.0726）已接近 4 通道全 SR
+全家桶（55 参，0.0576）——提示全通道 SR 化后有望持平或超越 SOTA。
+
+% ==========================================================================
+\section{P2：多种子重复（进行中）}
+
+三臂 $\times$ 3 种子（seed 0,1,2）$\times$ 600\,s 跑批进行中，
+聚合（median / mean / min / max）表将在 \texttt{p1\_arms\_multiseed.json}
+完成后填入本节。
+
+% --- P2 结果占位：跑批完成后更新 ---
+
+% ==========================================================================
+\section{诚实声明与局限}
+
+\begin{enumerate}\itemsep2pt
+  \item P1 主表为\textbf{单任务、单种子}结果；一般性结论以 P2 聚合为准。
+  \item 所有 loss 为 \textbf{in-sample}；B0（0.0031）为 48 参数联合上界，
+        不可外推（报告轮留一外推已证不可行）；H1 同样未做留出检验。
+  \item swap 对照在\textbf{本框架的 stage base}（默认基池）下进行；历史
+        big 组的靶标定义（基池）可能略有差异，swap 公式常数经同帧重拟合，
+        比较的是\emph{形状}而非常数。
+  \item \texttt{target\_met} 停机依赖域内阈值设定，阈值本身是域适配器
+        的一部分而非无偏判据。
+  \item 预算检查在步间进行，步内工作（一次 propose 实测可耗 244\,s）
+        仍可能超调；两引擎均有此现象（修复后 4\%--13\%）。
+  \item Inspector 的收益（provenance 质量 vs 损失预算）在 P2 多种子
+        聚合前不做结论。
+\end{enumerate}
+
+% ==========================================================================
+\section{结论}
+
+在 basisB2 口径的受控对照中，LGF-Agent 以 \textbf{2.8--3.0$\times$} 的
+同预算优势超过 legacy 引擎，且其自动发现的系数公式在终口径联合抛光中
+\textbf{存活并优于人工大形状轮的同通道冠军}（0.0726 vs 0.1992）——
+这是``LLM 智能体 + 数值探针约束 + 状态层''设计有效性的第一个受控证据。
+全部实验成本 $\approx$\$0.1（glm-5.3），框架、协议与轨迹
+（traj / archive / 真实 usage 账本）完整可复现。
+
+\paragraph{后续。}
+P2 多种子聚合 $\to$ 全 4 通道 SR 化 + 终口径联合抛光（对齐 0.0576 协议）
+$\to$ LOSO 外推检验 $\to$ propose 内部耗时剖析与 $k$/步配比调优
+$\to$ P4 Inspector 换底座消融。
+
+\appendix
+\section{冠军公式 DSL 原文与终口径参数}
+
+\paragraph{agent\_no\_insp 中间口径冠军（0.0995，12 参）。}
+\verbatiminput{champion_agent_no_insp.txt}
+
+\paragraph{swap 基准：e\_lgf\_mg\_big 的 $a_2$（5 参）。}
+\verbatiminput{champion_swap_big.txt}
+
+\paragraph{终口径抛光后的参数（H1，agent\_no\_insp）。}
+\verbatiminput{refit_theta_agent_no_insp.txt}
+
+\end{document}
