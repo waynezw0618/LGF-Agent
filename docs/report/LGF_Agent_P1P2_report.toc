@@ -29,5 +29,7 @@
 \contentsline {paragraph}{agent\_no\_insp 中间口径冠军（0.0995，12 参）。}{7}{paragraph*.25}%
 \contentsline {paragraph}{swap 基准：e\_lgf\_mg\_big 的 $a_2$（5 参）。}{7}{paragraph*.26}%
 \contentsline {paragraph}{终口径抛光后的参数（H1，agent\_no\_insp）。}{7}{paragraph*.27}%
-\contentsline {section}{\numberline {B}全 4 通道 agent 公式原文（终口径 0.0169）}{7}{appendix.B}%
+\contentsline {section}{\numberline {B}全 4 通道 agent 公式原文（终口径 0.0169）}{8}{appendix.B}%
 \contentsline {paragraph}{注。}{8}{paragraph*.28}%
+\contentsline {paragraph}{注。}{8}{paragraph*.29}%
+\contentsline {section}{\numberline {C}全部冠军公式清单（16 条，自动提取）}{8}{appendix.C}%

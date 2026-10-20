@@ -1,0 +1,63 @@
+====================================================================================================
+[P1/legacy]  loss=0.2997  stop=预算耗尽
+  DSL: ((roloc) * (((C3 * (yw)) * (K1 * (1))) / (K3 * (roloc) + C2 * (1)))) * (log(C4 *
+       (yw) + K2 *(1)))
+
+[P1/agent_no_insp]  loss=0.09953  stop=target_met
+  DSL: C1*(yw)*(sqrt(roloc)/(C2+sqrt(roloc))) + C3*(yw) + C4*(log((eta2+C5)/(eta2+C6))) +
+       C7 +C8*(eta2/(C9+eta2)) + C10*(yw*yw) + C11*(yw)*(roloc/(C12+roloc))
+
+[P1/agent_insp]  loss=0.1076  stop=time_budget
+  DSL: C1*yw*(sqrt(roloc)/(C2+sqrt(roloc))) + C3*yw + C4*log((eta2+C5)/(eta2+C6)) +
+       C7*s2o2/(C8+s2o2) +C9 + C10*eta2/(C11+eta2)
+
+[P2/s0/legacy]  loss=0.1297  stop=预算耗尽
+  DSL: (C2 * (yw) + yw + K1 * (1)) * (log(yw + K2 * (1))) + C3 * (log(C1 * (yw) + K3 *
+       (1)))
+
+[P2/s0/agent_no_insp]  loss=0.06751  stop=target_met
+  DSL: C1+C2*yw+C3*yw*tanh(C4*sqrt(roloc))+C5*log((eta2+C6)/(eta2+C7))+C8*eta2/(C9+eta2)+C1
+       0*yw*tanh(C4*sqrt(roloc))/(C11+eta2)
+
+[P2/s0/agent_insp]  loss=0.1196  stop=time_budget
+  DSL: C1*yw*sqrt(roloc)/(C2+sqrt(roloc)) + C3*yw + C4*log((eta2+C5)/(eta2+C6)) + C7
+       +C8*eta2/(C9+eta2)
+
+[P2/s1/legacy]  loss=0.2796  stop=预算耗尽
+  DSL: K2 * (K1 * (K3 * (1) + C2 * (yw)) + K4 * (tanh(C1 * (yw))))
+
+[P2/s1/agent_no_insp]  loss=0.1693  stop=time_budget
+  DSL: C1*yw*sqrt(roloc)/(1+sqrt(roloc)) + C2*yw + C3*log((eta2+0.01)/(eta2+1)) + C4 +
+       C5*eta2/(1+eta2)
+
+[P2/s1/agent_insp]  loss=0.1593  stop=time_budget
+  DSL: C1 + C2*yw + C3*(1 - 1/(1+C4*roloc)) + C5*yw*sqrt(roloc)/(1+sqrt(roloc))
+       +C6*log((eta2+0.01)/(eta2+1))
+
+[P2/s2/legacy]  loss=0.1862  stop=预算耗尽
+  DSL: (K7 * (1) + K8 * (yw)) * ((K6 * (K1 * (1) + K2 * (yw))) * (inv(K3 * (1) + K4 *
+       (yw))))
+
+[P2/s2/agent_no_insp]  loss=0.1193  stop=time_budget
+  DSL: C0 + C1*yw*sqrt(roloc)/(C2+sqrt(roloc)) + C3*yw + C4*log((eta2+0.01)/(eta2+1))
+       +C5*eta2/(C6+eta2)
+
+[P2/s2/agent_insp]  loss=0.1693  stop=time_budget
+  DSL: C1*yw*sqrt(roloc)/(1+sqrt(roloc)) + C2*yw + C3*log((eta2+0.01)/(eta2+1)) + C4 +
+       C5*eta2/(1+eta2)
+
+[全通道/a1]  loss=0.04097  stop=target_met
+  DSL: C1*yw + C2*yw*eta2/(C3+eta2) + C4*zeta2/(1+zeta2) + C5*log((eta2+C6)/(eta2+C7)) +
+       C8/(C9+roloc)
+
+[全通道/a3]  loss=0.253  stop=time_budget
+  DSL: C1 + C2*zeta2/(C3+zeta2) + C4*roloc/(C5+roloc+C6*roloc*roloc) +
+       C7*yw*roloc/(C8+roloc)
+
+[全通道/a4]  loss=0.6947  stop=time_budget
+  DSL: C1 + C2*tanh(C3*roloc) + C4*zeta2/(C5+zeta2) + C6*yw*sqrt(roloc)/(C7+sqrt(roloc)) +
+       C8*yw +C9*log(eta2+C10)/(1+log(eta2+C10))
+
+[swap/e_lgf_mg_big (人工)]  loss=—  stop=同帧对照
+  DSL: ((C1 * (yw)) * (sqrt(1))) / (C4 * (1) + sqrt(roloc)) + C2 * (yw) + (C3 * (1)) / (C5
+       * (1) +eta2)

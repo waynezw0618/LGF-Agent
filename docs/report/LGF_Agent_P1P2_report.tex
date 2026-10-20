@@ -399,4 +399,18 @@ LOSO 外推检验（全通道 0.0169 为 in-sample，历史 48 参数联合解�
 $\Theta$ 列序为 $\{\et,\zt,S^2/\Omega^2,\ret,\rol,\yw\}$，与
 \texttt{BASE\_VARS} 一致。
 
+\paragraph{注。}$a_1$ 式中的分母常数 (C3) 等在联合抛光后为全局常数；
+$\Theta$ 列序为 $\{\et,\zt,S^2/\Omega^2,\ret,\rol,\yw\}$，与
+\texttt{BASE\_VARS} 一致。
+
+\section{全部冠军公式清单（16 条，自动提取）}
+
+本报告全部实验发现的首位候选公式——P1 三臂、P2 三种子 $\times$ 三臂、
+全通道 $a_1/a_3/a_4$，以及人工 swap 基准——均由脚本从
+\texttt{run/} 产物直接提取（\texttt{top-1} by loss，DSL 已清洗
+\texttt{a\_j=} 标签），逐条标注中间口径 loss 与停机原因。
+机器生成文件：\texttt{champions\_all.txt}（与 PDF 同目录）。
+
+{\scriptsize\verbatiminput{champions_all.txt}}
+
 \end{document}
