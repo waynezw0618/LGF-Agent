@@ -35,3 +35,9 @@ Thumbs.db
 .env
 *.key
 secrets.*
+
+# --- LaTeX 中间产物 ---
+*.aux
+*.out
+*.toc
+*.synctex.gz
